@@ -6,25 +6,25 @@ from app.core.base_models import BaseModel
 
 
 class MaintenanceType(str, enum.Enum):
-    PREVENTIVO = "preventivo"
-    CORRECTIVO = "correctivo"
-    PREDICTIVO = "predictivo"
-    INSPECCION = "inspeccion"
+    preventivo = "preventivo"
+    correctivo = "correctivo"
+    predictivo = "predictivo"
+    inspeccion = "inspeccion"
 
 
 class TaskStatus(str, enum.Enum):
-    PENDIENTE = "pendiente"
-    EN_PROGRESO = "en progreso"
-    COMPLETADO = "completado"
-    CANCELADO = "cancelado"
-    VENCIDO = "vencido"
+    pendiente = "pendiente"
+    en_progreso = "en_progreso"
+    completado = "completado"
+    cancelado = "cancelado"
+    vencido = "vencido"
 
 
 class TaskPriority(str, enum.Enum):
-    BAJO = "baja"
-    MEDIANO = "mediana"
-    ALTO = "alta"
-    CRITICO = "critico"
+    bajo = "bajo"
+    mediano = "mediano"
+    alto = "alto"
+    critico = "critico"
 
 
 class MaintenanceTask(BaseModel):
@@ -32,9 +32,9 @@ class MaintenanceTask(BaseModel):
 
     title = Column(String(300), nullable=False)
     description = Column(Text, nullable=True)
-    maintenance_type = Column(Enum(MaintenanceType), nullable=False, default=MaintenanceType.PREVENTIVO)
-    status = Column(Enum(TaskStatus), nullable=False, default=TaskStatus.PENDIENTE)
-    priority = Column(Enum(TaskPriority), nullable=False, default=TaskPriority.MEDIANO)
+    maintenance_type = Column(Enum(MaintenanceType), nullable=False, default=MaintenanceType.preventivo)
+    status = Column(Enum(TaskStatus), nullable=False, default=TaskStatus.pendiente)
+    priority = Column(Enum(TaskPriority), nullable=False, default=TaskPriority.mediano)
     
     scheduled_date = Column(DateTime, nullable=True)
     started_at = Column(DateTime, nullable=True)

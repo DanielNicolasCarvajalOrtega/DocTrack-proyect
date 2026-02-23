@@ -7,10 +7,10 @@ from app.core.base_models import BaseModel
 
 
 class BillingPlan(str, enum.Enum):
-    PRUEBA = "prueba"
-    BASICO = "basico"
-    PRO = "pro"
-    EMPRESAS = "empresas"
+    prueba = "prueba"
+    basico = "basico"
+    pro = "pro"
+    empresas = "empresas"
 
 
 class Company(BaseModel):
@@ -18,7 +18,7 @@ class Company(BaseModel):
 
     name = Column(String(200), nullable=False, unique=True)
     slug = Column(String(100), nullable=False, unique=True, index=True)
-    billing_plan = Column(Enum(BillingPlan), nullable=False, default=BillingPlan.PRUEBA)
+    billing_plan = Column(Enum(BillingPlan), nullable=False, default=BillingPlan.prueba)
     max_users = Column(Integer, default=10, nullable=False)
     max_plants = Column(Integer, default=1, nullable=False)
     max_storage_gb = Column(Integer, default=5, nullable=False)
@@ -37,10 +37,10 @@ class Company(BaseModel):
 
 
 class CompanyRole(str, enum.Enum):
-    COMPAÑIA_ADMINISTRADORA = "admin"
-    SUPERVISOR = "supervisor"
-    TECNICOS = "tecnicos"
-    OPERADORES = "operadores"
+    admin = "admin"
+    supervisor = "supervisor"
+    tecnicos = "tecnicos"
+    operadores = "operadores"
 
 
 class CompanyUser(BaseModel):
@@ -48,7 +48,7 @@ class CompanyUser(BaseModel):
 
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    role = Column(Enum(CompanyRole), nullable=False, default=CompanyRole.OPERADORES, index=True)
+    role = Column(Enum(CompanyRole), nullable=False, default=CompanyRole.operadores, index=True)
     invited_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     joined_at = Column(DateTime, default=datetime.utcnow)
     company = relationship("Company", back_populates="users")

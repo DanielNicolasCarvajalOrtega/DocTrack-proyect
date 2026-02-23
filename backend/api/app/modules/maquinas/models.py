@@ -7,10 +7,10 @@ from app.core.base_models import BaseModel
 
 
 class MachineStatus(str, enum.Enum):
-    OPERATIVA = "operativa"
-    MANTENIMIENTO = "mantenimiento"
-    FALLAS = "fallas"
-    DESCONTINUADA = "descontinuada"
+    operativa = "operativa"
+    mantenimiento = "mantenimiento"
+    fallas = "fallas"
+    descontinuada = "descontinuada"
 
 
 class Machine(BaseModel):
@@ -22,7 +22,7 @@ class Machine(BaseModel):
     serial_number = Column(String(100), nullable=True, unique=True)
     description = Column(Text, nullable=True)
     location_detail = Column(String(300), nullable=True)
-    status = Column(Enum(MachineStatus), nullable=False, default=MachineStatus.OPERATIVA)
+    status = Column(Enum(MachineStatus), nullable=False, default=MachineStatus.operativa)
     qr_code = Column(String(100), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     image_url = Column(String(500), nullable=True)
     area_id = Column(UUID(as_uuid=True), ForeignKey("areas.id", ondelete="CASCADE"), nullable=False, index=True)

@@ -7,20 +7,20 @@ from app.core.base_models import BaseModel
 
 
 class DocumentType(str, enum.Enum):
-    MANUALES = "manuales"
-    CERTIFICADOS = "certificados"
-    INSTRUCCIONES_SEGURIDAD = "instrucciones de seguridad"
-    PLAN_MANTENIMIENTO = "mantenimiento"
-    HOJA_TECNICA= "hoja tecnica"
-    PROCEDIMIENTOS = "procedimientos"
-    OTROS = "otros"
+    manuales = "manuales"
+    certificados = "certificados"
+    instrucciones_seguridad = "instrucciones_de_seguridad"
+    plan_mantenimiento = "mantenimiento"
+    hoja_tecnica= "hoja_tecnica"
+    procedimientos = "procedimientos"
+    otros = "otros"
 
 
 class DocumentStatus(str, enum.Enum):
-    ACTIVO = "activo"
-    EXPIRADO = "expirado"
-    SUSTITUIDO = "sustituido"
-    BORRADOR = "borrador"
+    activo = "activo"
+    expirado = "expirado"
+    sustituido = "sustituido"
+    borrador = "borrador"
 
 
 class Document(BaseModel):
@@ -28,8 +28,8 @@ class Document(BaseModel):
 
     title = Column(String(300), nullable=False)
     description = Column(Text, nullable=True)
-    doc_type = Column(Enum(DocumentType), nullable=False, default=DocumentType.OTROS)
-    status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.ACTIVO)
+    doc_type = Column(Enum(DocumentType), nullable=False, default=DocumentType.otros)
+    status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.activo)
     version = Column(String(20), nullable=False, default="1.0")
     version_number = Column(Integer, nullable=False, default=1)
     file_url = Column(String(1000), nullable=False)
@@ -70,7 +70,7 @@ class DocumentReadConfirmation(BaseModel):
     
     document = relationship("Document", back_populates="read_confirmations")
     user = relationship("User")
-    machine = relationship("Machine")
+    
 
 
     __table_args__ = (
