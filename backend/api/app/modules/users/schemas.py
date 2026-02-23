@@ -1,16 +1,12 @@
 
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
 from uuid import UUID
 from typing import Optional
-from app.modules.users.models import UserRole
+from app.modules.compañias.models import CompanyRole
 
-
-
-# ==================== RESPONSE SCHEMAS ====================
 
 class PlantAccessResponse(BaseModel):
-    """Acceso a planta (resumido)"""
     plant_id: UUID
     plant_name: str
     company: str
@@ -21,12 +17,11 @@ class PlantAccessResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
-    """Usuario básico (para listados)"""
     id: UUID
     first_name: str
     last_name: str
     email: str
-    role: UserRole
+    role: CompanyRole
     phone: str | None
     avatar_url: str | None
     is_active: bool
@@ -51,22 +46,20 @@ class UserStatsResponse(BaseModel):
     operators: int
 
 
-# ==================== REQUEST SCHEMAS ====================
-
 class UserCreateRequest(BaseModel):
     """Crear nuevo usuario"""
     first_name: str = Field(..., min_length=2, max_length=100)
     last_name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=100)
-    role: UserRole
+    role: CompanyRole
     phone: Optional[str] = Field(None, max_length=20)
     plant_ids: Optional[list[UUID]] = Field(
         default=[],
         description="IDs de plantas a las que tendrá acceso"
     )
 
-    @validator('password')
+    @field_validator('password')
     def validate_password(cls, v):
         """Validar fortaleza de contraseña"""
         if len(v) < 8:
@@ -85,7 +78,7 @@ class UserUpdateRequest(BaseModel):
     first_name: Optional[str] = Field(None, min_length=2, max_length=100)
     last_name: Optional[str] = Field(None, min_length=2, max_length=100)
     email: Optional[EmailStr] = None
-    role: Optional[UserRole] = None
+    role: Optional[CompanyRole] = None
     phone: Optional[str] = Field(None, max_length=20)
     avatar_url: Optional[str] = Field(None, max_length=500)
 
@@ -95,7 +88,7 @@ class UserPasswordUpdateRequest(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=8, max_length=100)
 
-    @validator('new_password')
+    @field_validator('new_password')
     def validate_password(cls, v):
         if len(v) < 8:
             raise ValueError('La contraseña debe tener al menos 8 caracteres')
@@ -117,8 +110,6 @@ class AddPlantAccessRequest(BaseModel):
     """Agregar acceso a una planta"""
     plant_id: UUID
 
-
-# ==================== RESPONSE WRAPPERS ====================
 
 class UserListResponse(BaseModel):
     """Respuesta paginada de usuarios"""

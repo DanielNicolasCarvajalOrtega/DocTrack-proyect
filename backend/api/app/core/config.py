@@ -1,8 +1,13 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+import os
+from  dotenv import load_dotenv
+
+
 
 
 class Settings(BaseSettings):
+    load_dotenv()
     # App
     APP_NAME: str = "DocTrack API"
     APP_VERSION: str = "1.0.0"
@@ -10,10 +15,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    DATABASE_URL: str
+    DATABASE_URL: str = "postgresql://docker-lucas--:DockErSQL--v1@db:5432/doctrack_db"
 
     # Security
-    SECRET_KEY: str
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7

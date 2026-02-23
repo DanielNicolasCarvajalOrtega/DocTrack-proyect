@@ -16,7 +16,7 @@ class BaseModel(Base):
     created_at = Column(DateTime,default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True,nullable=False, index=True)
-
+    
     def to_dict(self)-> dict:
         return {
             c.name: getattr(self, c.name)
