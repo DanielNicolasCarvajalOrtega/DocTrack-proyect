@@ -1,6 +1,6 @@
 # DocTrack - Sistema de Gestión Documental y Trazabilidad Industrial
 
-## 🎯 Descripción General
+## Descripción General
 **DocTrack** es una plataforma SaaS B2B Multi-Tenant diseñada específicamente para el sector industrial. Su función principal es centralizar la gestión de la documentación técnica de maquinaria, llevar una trazabilidad inmutable de las operaciones y administrar los flujos de mantenimiento (preventivo, correctivo y predictivo) de forma segura y aislada para múltiples empresas.
 
 ## 💡 Propósito
@@ -17,7 +17,7 @@ Actualmente, las empresas industriales (como Carozzi, Nestlé o Unilever) sufren
 * **Falta de control de acceso estructurado:** Ausencia de permisos granulares, lo que permite que empleados accedan a información confidencial de plantas o áreas que no les corresponden.
 * **Desconexión en planta:** El operario frente a la máquina no tiene acceso rápido a los manuales para resolver problemas en el momento.
 
-## ✅ Cómo se va a solucionar (La Solución)
+## Cómo se va a solucionar (La Solución)
 DocTrack resuelve esta brecha mediante la digitalización y automatización del piso de planta:
 1. **Acceso Instantáneo (Códigos QR):** Cada máquina física tendrá un código QR único. El operario lo escanea con su móvil y accede al instante a todos los manuales, certificados y tareas de esa máquina específica.
 2. **Trazabilidad Automática:** El sistema exige y registra automáticamente las "Confirmaciones de lectura" (quién, qué documento y en qué fecha exacta), generando un historial auditable.
