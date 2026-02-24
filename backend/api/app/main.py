@@ -1,15 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-
 from app.core.config import settings
 from app.shared.exceptions import (
     AppException,
     app_exception_handler,
     validation_exception_handler
 )
-
-# Importar routers
 from app.modules.plantas.router import router as plants_router
 from app.modules.maquinas.router import router as machines_router
 from app.modules.documentos.router import router as documents_router

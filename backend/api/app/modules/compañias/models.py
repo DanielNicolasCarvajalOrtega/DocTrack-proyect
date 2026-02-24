@@ -29,8 +29,23 @@ class Company(BaseModel):
     address = Column(Text, nullable=True)
     logo_url = Column(String(500), nullable=True)
     primary_color = Column(String(7), default="#3B82F6")
-    users = relationship("CompanyUser", back_populates="company", cascade="all, delete-orphan")
-    plants = relationship("Plant", back_populates="company", cascade="all, delete-orphan")
+    users = relationship(
+        "CompanyUser",
+        back_populates="company",
+        cascade="all, delete-orphan",
+        lazy="selectin"  # Carga eager para evitar N+1
+    )
+    plants = relationship(
+        "Plant",
+        back_populates="company",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+    
+    __table_args__ = (
+        Index('ix_company_active', 'is_active'),
+        Index('ix_company_billing_active', 'billing_plan', 'is_active'),
+    )
     
     def __repr__(self):
         return f"<Company {self.name}>"
@@ -56,6 +71,8 @@ class CompanyUser(BaseModel):
     invited_by = relationship("User", foreign_keys=[invited_by_id])
     
     __table_args__ = (
+        Index('ix_company_user_active', 'company_id', 'is_active'),
+        Index('ix_user_company_active', 'user_id', 'is_active'),
         Index('ix_company_user_lookup', 'company_id', 'user_id'),
         Index('ix_company_role_lookup', 'company_id', 'role'),
         UniqueConstraint('company_id', 'user_id', name='uq_company_user'),
