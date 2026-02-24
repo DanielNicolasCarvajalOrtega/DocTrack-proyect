@@ -25,4 +25,4 @@ DocTrack resuelve esta brecha mediante la digitalización y automatización del 
 4. **Alertas Inteligentes:** El sistema avisa proactivamente (ej. 30 días antes) cuando un documento o certificado está a punto de vencer.
 5. **Aislamiento Multi-Tenant:** Una arquitectura backend robusta asegura que los datos de cada cliente estén 100% separados y seguros, permitiendo escalar el modelo de negocio SaaS.
 
-![schema](backend/schema/docktrack-schema.png)
+![schema](./backend/schema/doctrack-schema.png)
