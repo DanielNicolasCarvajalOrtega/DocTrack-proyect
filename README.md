@@ -1,28 +1,215 @@
-# DocTrack - Sistema de Gestión Documental y Trazabilidad Industrial
+# DocTrack 🏭
+### Sistema de Gestión Documental y Trazabilidad Industrial
 
-## Descripción General
-**DocTrack** es una plataforma SaaS B2B Multi-Tenant diseñada específicamente para el sector industrial. Su función principal es centralizar la gestión de la documentación técnica de maquinaria, llevar una trazabilidad inmutable de las operaciones y administrar los flujos de mantenimiento (preventivo, correctivo y predictivo) de forma segura y aislada para múltiples empresas.
+> *"Cada máquina, cada documento, cada persona — conectados en tiempo real"*
 
-## 💡 Propósito
-El propósito central del sistema se resume en su propuesta de valor: *"Cada máquina, cada documento, cada persona — conectados en tiempo real"*. 
-DocTrack busca garantizar el cumplimiento normativo (compliance) facilitando las auditorías, y empoderar a los operarios en planta dándoles acceso inmediato a la información crítica y actualizada que necesitan para operar y reparar equipos de forma segura.
+---
 
-## ⚠️ El Problema Encontrado
-Actualmente, las empresas industriales (como Carozzi, Nestlé o Unilever) sufren de una gestión de la información ineficiente y riesgosa:
-* **Dispersión de información:** Los manuales y certificados están perdidos en carpetas físicas, Google Drive o SharePoint hasta en whatsapp.
-* **Tiempos prolongados de inactividad (Downtime):** Las máquinas pasan horas detenidas porque los técnicos tardan demasiado en rastrear el historial de fallas y el manual de reparación correcto.
-* **Falta de trazabilidad:** No hay forma de comprobar si un operario realmente leyó las instrucciones de seguridad antes de usar una máquina.
-* **Procesos manuales:** El mantenimiento se sigue gestionando mediante hojas de cálculo (Excel) o papel.
-* **Riesgo normativo:** Los documentos importantes (como certificados de calibración) vencen sin que nadie lo note porque no existen alertas automáticas.
-* **Falta de control de acceso estructurado:** Ausencia de permisos granulares, lo que permite que empleados accedan a información confidencial de plantas o áreas que no les corresponden.
-* **Desconexión en planta:** El operario frente a la máquina no tiene acceso rápido a los manuales para resolver problemas en el momento.
+## 📋 Tabla de Contenidos
 
-## Cómo se va a solucionar (La Solución)
-DocTrack resuelve esta brecha mediante la digitalización y automatización del piso de planta:
-1. **Acceso Instantáneo (Códigos QR):** Cada máquina física tendrá un código QR único. El operario lo escanea con su móvil y accede al instante a todos los manuales, certificados y tareas de esa máquina específica.
-2. **Trazabilidad Automática:** El sistema exige y registra automáticamente las "Confirmaciones de lectura" (quién, qué documento y en qué fecha exacta), generando un historial auditable.
-3. **Mantenimiento Digitalizado:** Todo el flujo de trabajo (creación de la tarea por el supervisor → ejecución del técnico → cierre de la tarea) se gestiona desde la plataforma.
-4. **Alertas Inteligentes:** El sistema avisa proactivamente (ej. 30 días antes) cuando un documento o certificado está a punto de vencer.
-5. **Aislamiento Multi-Tenant:** Una arquitectura backend robusta asegura que los datos de cada cliente estén 100% separados y seguros, permitiendo escalar el modelo de negocio SaaS.
+- [Descripción General](#-descripción-general)
+- [El Problema](#-el-problema)
+- [La Solución](#-la-solución)
+- [Tecnologías](#-tecnologías)
+- [Instalación y Configuración](#-instalación-y-configuración)
+- [Poblar la Base de Datos](#-poblar-la-base-de-datos-seed)
+- [Ejecutar el Servidor](#-ejecutar-el-servidor)
 
-![schema](./backend/schema/doctrack-schema.png)
+---
+
+## 🏢 Descripción General
+
+**DocTrack** es una plataforma **SaaS B2B Multi-Tenant** diseñada específicamente para el sector industrial. Su función principal es:
+
+- Centralizar la **gestión de documentación técnica** de maquinaria.
+- Llevar una **trazabilidad inmutable** de las operaciones.
+- Administrar los flujos de **mantenimiento** (preventivo, correctivo y predictivo) de forma segura y aislada para múltiples empresas.
+
+---
+
+## ⚠️ El Problema
+
+Las empresas industriales sufren de una gestión de la información ineficiente y riesgosa:
+
+| Problema | Descripción |
+|---|---|
+| 📂 Dispersión de información | Manuales perdidos en carpetas físicas, Drive o WhatsApp |
+| ⏱️ Downtime prolongado | Técnicos tardan demasiado en rastrear historial de fallas |
+| 🔍 Falta de trazabilidad | Sin forma de comprobar si un operario leyó las instrucciones |
+| 📊 Procesos manuales | Mantenimiento gestionado en Excel o papel |
+| 🚨 Riesgo normativo | Certificados que vencen sin que nadie lo note |
+| 🔒 Sin control de acceso | Empleados acceden a información que no les corresponde |
+| 📵 Desconexión en planta | El operario no tiene acceso rápido a manuales en campo |
+
+---
+
+## 💡 La Solución
+
+DocTrack digitaliza y automatiza el piso de planta mediante:
+
+1. **Acceso Instantáneo vía QR** — Cada máquina tiene un código QR único. El operario lo escanea y accede al instante a todos sus manuales, certificados y tareas.
+
+2. **Trazabilidad Automática** — Registra automáticamente las confirmaciones de lectura: quién leyó, qué documento y en qué fecha exacta.
+
+3. **Mantenimiento Digitalizado** — Flujo completo: creación de tarea por el supervisor → ejecución del técnico → cierre y registro.
+
+4. **Alertas Inteligentes** — Notificaciones proactivas cuando un documento o certificado está próximo a vencer.
+
+5. **Aislamiento Multi-Tenant** — Arquitectura que garantiza que los datos de cada cliente estén 100% separados y seguros.
+
+---
+
+## 🛠️ Tecnologías
+
+- **Backend:** Python 3.12+ / FastAPI
+- **Base de datos:** PostgreSQL 15
+- **ORM:** SQLAlchemy
+- **Autenticación:** JWT (PyJWT / Bcrypt)
+- **Configuración:** Pydantic Settings
+- **Infraestructura:** Docker / Docker Compose
+- **Cache:** Redis 7
+
+---
+
+## 🚀 Instalación y Configuración
+
+### Prerrequisitos
+
+- Python 3.12+
+- Docker y Docker Compose
+- Git
+
+### 1. Clonar el repositorio
+
+```bash
+git clone <url-del-repositorio>
+cd ./backend/api
+```
+
+### 2. Crear y activar el entorno virtual
+
+```bash
+# Crear el entorno virtual
+python3 -m venv venv
+
+# Activar (Mac/Linux)
+source venv/bin/activate
+
+# Activar (Windows)
+venv\Scripts\activate
+```
+
+### 3. Instalar dependencias
+
+```bash
+# Dentro de backend/api/
+pip install -r requirements.txt
+```
+
+### 4. Configurar variables de entorno
+
+Crea un archivo `.env` en la raíz de `backend/api/`:
+
+```env
+APP_NAME="X"
+ENVIRONMENT="X"
+DATABASE_URL="X"
+SECRET_KEY="tu_super_secreto_seguro_aqui"
+ALGORITHM="X"
+```
+
+### 5. Levantar los servicios con Docker
+
+Desde `backend/`:
+
+```bash
+# Levantar todos los servicios
+docker compose up -d
+
+# Bajar todos los servicios
+docker compose down
+
+# Verificar que estén corriendo
+docker compose ps
+```
+
+### 6. Inicializar la base de datos
+
+Ejecuta el script SQL principal en tu gestor de base de datos (DBeaver, pgAdmin, o terminal):
+
+```
+backend/schema/create_tables.sql
+```
+
+---
+
+## 🌱 Poblar la Base de Datos (Seed)
+
+El proyecto incluye un script de seeding corporativo que inyecta automáticamente:
+
+- ✅ 6 empresas (Carozzi, Nestlé, Coca-Cola, Siemens, Toyota, Bayer)
+- ✅ Estructura jerárquica: Plantas → Áreas → Máquinas
+- ✅ Usuarios con distintos roles (Admin, Supervisor, Técnico, Operador)
+- ✅ Historial de mantenimiento, logs de actividad y documentos técnicos
+
+Ejecutar desde `backend/`:
+
+```bash
+docker compose exec -w /app api python -m schema.seed
+```
+
+Una vez completado verás las credenciales de acceso principal:
+
+```
+🔐 Email:    manuelesD@gmail.com
+🔐 Password: DocTrack2027@@
+```
+
+> Para los demás administradores: `admin@[dominio]` / `Admin123!`
+
+---
+
+## ▶️ Ejecutar el Servidor
+
+```bash
+# Desde backend/api/
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+El flag `--reload` reinicia el servidor automáticamente al detectar cambios en el código.
+
+La API estará disponible en: `http://localhost:8000`
+
+Documentación interactiva: `http://localhost:8000/docs`
+
+---
+
+## 📐 Schema de Base de Datos
+
+![Schema](./backend/schema/doctrack-schema.png)
+
+---
+
+## 📁 Estructura del Proyecto
+
+```
+sharted/
+└── backend/
+    ├── docker-compose.yml
+    ├── api/
+    │   ├── Dockerfile
+    │   ├── requirements.txt
+    │   └── app/
+    │       ├── main.py
+    │       ├── core/
+    │       └── modules/
+    │           ├── users/
+    │           ├── compañias/
+    │           ├── plantas/
+    │           ├── maquinas/
+    │           ├── documentos/
+    │           └── mantenimiento/
+    └── schema/
+        ├── seed.py
+        └── create_tables.sql
+```
