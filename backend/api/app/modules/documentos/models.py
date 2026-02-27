@@ -9,8 +9,8 @@ from app.core.base_models import BaseModel
 class DocumentType(str, enum.Enum):
     manuales = "manuales"
     certificados = "certificados"
-    instrucciones_seguridad = "instrucciones_de_seguridad"
-    plan_mantenimiento = "mantenimiento"
+    instrucciones_seguridad = "instrucciones_seguridad"
+    mantenimiento = "mantenimiento"
     hoja_tecnica= "hoja_tecnica"
     procedimientos = "procedimientos"
     otros = "otros"
@@ -40,7 +40,9 @@ class Document(BaseModel):
     valid_until = Column(DateTime, nullable=True)
     uploaded_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False )
     machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_id = Column(UUID(as_uuid=True),ForeignKey("companies.id",ondelete="CASCADE"), nullable=False, index=True)
     supersedes_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True)
+    company = relationship("Company", back_populates="documents")
     machine = relationship("Machine", back_populates="documents")
     uploaded_by = relationship("User")
     read_confirmations = relationship("DocumentReadConfirmation", back_populates="document", cascade="all, delete-orphan")

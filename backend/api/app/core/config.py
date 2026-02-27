@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    DATABASE_URL: str = "postgresql://docker-lucas--:DockErSQL--v1@db:5432/doctrack_db"
+    DATABASE_URL: str = "postgresql://docker-lucas--:DockErSQL--v1@localhost:5435/doctrack_db"
 
     # Security
     SECRET_KEY: str = ""

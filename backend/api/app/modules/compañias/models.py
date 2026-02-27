@@ -41,6 +41,13 @@ class Company(BaseModel):
         cascade="all, delete-orphan",
         lazy="selectin"
     )
+
+    documents = relationship(
+        "Document",
+        back_populates="company",
+        cascade="all, delete-orphan"
+    )
+    
     
     __table_args__ = (
         Index('ix_company_active', 'is_active'),

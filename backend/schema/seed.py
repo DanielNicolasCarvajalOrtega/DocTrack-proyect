@@ -2,14 +2,11 @@ import uuid
 import random
 import sys
 from pathlib import Path
-
-# Agregar backend/api al path para encontrar el módulo 'app'
-sys.path.insert(0, str(Path(__file__).parent.parent / 'api'))
+BASE_DIR = Path(__file__).resolve().parent.parent / "api"
+sys.path.insert(0, str(BASE_DIR))
 
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from api.app.core.database import SessionLocal
-from app.core.security import hash_password
 from app.modules.users.models import User
 from app.modules.compañias.models import Company, CompanyUser, CompanyRole, BillingPlan
 from app.modules.plantas.models import Plant, Area
@@ -18,12 +15,13 @@ from app.modules.documentos.models import Document, DocumentStatus, DocumentType
 from app.modules.mantenimiento.models import (
     MaintenanceType, MaintenanceTask, MaintenanceActivityLog, TaskPriority, TaskStatus
 )
-
+from app.core.security import hash_password
+from app.core.database import SessionLocal
 
 def run_seed():
     db: Session = SessionLocal()
     try:
-        print("🌱 Iniciando semilla de datos masiva de nivel corporativo...")
+        print("🌱 Iniciando semilla de datos MASIVA (Stress Test) corporativo...")
         _clear_data(db)
         
         # Datos base para las 6 empresas
@@ -36,11 +34,11 @@ def run_seed():
             {"name": "Bayer Agro", "slug": "bayer", "plan": BillingPlan.basico, "color": "#89D329", "domain": "bayer.com"},
         ]
 
-        estadisticas = {"empresas": 0, "usuarios": 0, "plantas": 0, "maquinas": 0, "tareas": 0}
+        estadisticas = {"empresas": 0, "usuarios": 0, "plantas": 0, "areas": 0, "maquinas": 0, "tareas": 0, "documentos": 0}
 
         # Generar todo el ecosistema por cada empresa
         for idx, emp_data in enumerate(empresas_data):
-            print(f"🏢 Construyendo ecosistema para: {emp_data['name']}...")
+            print(f"🏢 Construyendo ecosistema masivo para: {emp_data['name']}...")
             
             # crear empresa
             company = _crear_empresa_completa(db, emp_data)
@@ -50,25 +48,29 @@ def run_seed():
             users_dict = _crear_usuarios_completos(db, company, emp_data['domain'], is_first=(idx==0))
             estadisticas["usuarios"] += len(users_dict)
             
-            # crear plantas y áreas
-            plantas = _crear_plantas_completas(db, company)
+            # crear plantas y áreas (ALTO VOLUMEN)
+            plantas, total_areas = _crear_plantas_completas(db, company)
             estadisticas["plantas"] += len(plantas)
+            estadisticas["areas"] += total_areas
             
-            # crear maquinas para esas áreas
+            # crear maquinas para esas áreas (ALTO VOLUMEN)
             maquinas = _crear_maquinas_completas(db, plantas)
             estadisticas["maquinas"] += len(maquinas)
             
-            #  generar documentos y mantenimientos
-            _generar_comportamiento_operativo(db, maquinas, users_dict)
-            estadisticas["tareas"] += len(maquinas) * 2 # aprox 2 tareas por maquina
+            # generar documentos y mantenimientos
+            docs_creados, tareas_creadas = _generar_comportamiento_operativo(db, company, maquinas, users_dict)
+            estadisticas["documentos"] += docs_creados
+            estadisticas["tareas"] += tareas_creadas
 
         print("-" * 60)
-        print("✅ Seed corporativo completado exitosamente!")
-        print("\n📊 Resumen de Base de Datos:")
+        print("✅ Seed corporativo masivo completado exitosamente!")
+        print("\n📊 Resumen de Volumen Inyectado:")
         print(f"   🏢 Empresas creadas: {estadisticas['empresas']}")
         print(f"   👥 Usuarios activos: {estadisticas['usuarios']}")
         print(f"   🏭 Plantas operativas: {estadisticas['plantas']}")
+        print(f"   📍 Áreas generadas: {estadisticas['areas']}")
         print(f"   ⚙️  Máquinas registradas: {estadisticas['maquinas']}")
+        print(f"   📄 Documentos inyectados: {estadisticas['documentos']}")
         print(f"   🛠️  Tareas de mantenimiento: {estadisticas['tareas']}")
         
         print("\n🔐 Credenciales de acceso principal (Carozzi - Admin):")
@@ -104,13 +106,13 @@ def _crear_empresa_completa(db: Session, data: dict) -> Company:
         name=data["name"],
         slug=data["slug"],
         billing_plan=data["plan"],
-        max_users=500,
-        max_plants=20,
-        max_storage_gb=100,
-        trial_ends_at=now - timedelta(days=10), # ya pasaron la prueba
-        subscription_ends_at=now + timedelta(days=365), # suscripción de 1 año
+        max_users=5000,
+        max_plants=50,
+        max_storage_gb=1000,
+        trial_ends_at=now - timedelta(days=10),
+        subscription_ends_at=now + timedelta(days=365),
         contact_email=f"contacto@{data['domain']}",
-        contact_phone=f"+569{random.randint(11111111, 99999999)}", # debe validarse el largo y codigo
+        contact_phone=f"+569{random.randint(11111111, 99999999)}",
         address=f"Av. Corporativa {random.randint(100, 9999)}, Santiago, Chile",
         logo_url=f"https://logo.clearbit.com/{data['domain']}",
         primary_color=data["color"],
@@ -152,8 +154,7 @@ def _crear_usuarios_completos(db: Session, company: Company, domain: str, is_fir
         )
         
         db.add(u)
-        db.commit()
-        db.refresh(u)
+        db.flush() # Flush asigna el ID sin commitear aún
         
         cu = CompanyUser(
             company_id=company.id,
@@ -162,163 +163,174 @@ def _crear_usuarios_completos(db: Session, company: Company, domain: str, is_fir
             joined_at=now - timedelta(days=random.randint(30, 300))
         )
         db.add(cu)
-        db.commit()
+        db.flush()
         
         creados[ud["role"].value] = u
         
+    db.commit() # Un solo commit para todos los usuarios
     return creados
 
-def _crear_plantas_completas(db: Session, company: Company) -> list[Plant]:
+def _crear_plantas_completas(db: Session, company: Company) -> tuple[list[Plant], int]:
     plantas = []
-    # 2 Plantas por empresa
-    for i in range(1, 3):
+    total_areas = 0
+    # AUMENTO DE VOLUMEN: 5 Plantas por empresa
+    for i in range(1, 6):
         p = Plant(
             name=f"Planta Principal {company.name} - 0{i}",
             company_id=company.id,
-            location=f"Sector Industrial {random.choice(['Norte', 'Sur', 'Centro'])}, Lote {random.randint(1,50)}",
-            description=f"Planta dedicada a la producción y ensamblaje central de la corporación {company.name}.",
+            location=f"Sector Industrial {random.choice(['Norte', 'Sur', 'Centro', 'Este', 'Oeste'])}, Lote {random.randint(1,500)}",
+            description=f"Instalación de alto rendimiento operada por {company.name}.",
             logo_url=company.logo_url,
             is_active=True
         )
         db.add(p)
-        db.commit()
-        db.refresh(p)
+        db.flush() # Obtenemos p.id
         
-        # 2 Áreas por planta
-        for area_name in ["Línea de Producción A", "Sala de Máquinas Críticas"]:
+        # AUMENTO DE VOLUMEN: 5 Áreas por planta
+        tipos_areas = ["Línea de Producción", "Sala de Máquinas", "Empaquetado", "Procesamiento Térmico", "Almacenamiento Activo"]
+        for j, tipo in enumerate(tipos_areas, 1):
             a = Area(
-                name=area_name,
-                description=f"Área operativa de alta demanda en {p.name}.",
+                name=f"{tipo} {j}-{p.name[-2:]}",
+                description=f"Área operativa de nivel crítico.",
                 plant_id=p.id,
                 is_active=True
             )
             db.add(a)
-            db.commit()
+            total_areas += 1
             
         plantas.append(p)
-    return plantas
+        
+    db.commit() # Guardamos en bloque
+    return plantas, total_areas
 
 def _crear_maquinas_completas(db: Session, plantas: list[Plant]) -> list[Machine]:
     maquinas = []
-    marcas = ["Siemens", "Bosch", "Caterpillar", "ABB", "General Electric"]
+    marcas = ["Siemens", "Bosch", "Caterpillar", "ABB", "General Electric", "Mitsubishi", "Schneider"]
     
     for planta in plantas:
         for area in planta.areas:
-            # 2 Máquinas por área
-            for i in range(2):
+            # AUMENTO DE VOLUMEN: 15 Máquinas por área
+            for i in range(1, 16):
                 serial = f"SN-{uuid.uuid4().hex[:8].upper()}"
                 m = Machine(
-                    name=f"Equipo Industrial Tipo {random.choice(['A', 'B', 'X'])}",
-                    model=f"MOD-{random.randint(1000, 9000)}",
+                    name=f"Equipo Industrial {random.choice(['Extrusora', 'Motor', 'Banda', 'Horno', 'Compresor'])}",
+                    model=f"MOD-{random.randint(1000, 9999)}",
                     brand=random.choice(marcas),
                     serial_number=serial,
-                    description=f"Equipo de alto tonelaje para procesamiento en línea continua. Mantenimiento requerido cada 500 horas.",
-                    location_detail=f"Pasillo {random.randint(1,5)}, Estación {random.randint(1,20)}",
-                    status=random.choice(list(MachineStatus)), # Status aleatorio
+                    description=f"Maquinaria pesada inyectada en semilla masiva. Operando en {area.name}.",
+                    location_detail=f"Pasillo {random.randint(1,10)}, Estación {random.randint(1,50)}",
+                    status=random.choices(list(MachineStatus), weights=[70, 10, 15, 5])[0], # 70% operativas
                     qr_code=f"QR-{serial}",
                     image_url=f"https://via.placeholder.com/500x300.png?text=Maquina+{serial}",
                     area_id=area.id,
                     is_active=True
                 )
                 db.add(m)
-                db.commit()
-                db.refresh(m)
                 maquinas.append(m)
+                
+    db.commit() # Solo 1 commit pesado por empresa
     return maquinas
 
-def _generar_comportamiento_operativo(db: Session, maquinas: list[Machine], users: dict):
+def _generar_comportamiento_operativo(db: Session, company: Company, maquinas: list[Machine], users: dict):
     now = datetime.utcnow()
     admin = users[CompanyRole.admin.value]
     supervisor = users[CompanyRole.supervisor.value]
     tecnico = users[CompanyRole.tecnicos.value]
     operador = users[CompanyRole.operadores.value]
 
+    docs_creados = 0
+    tareas_creadas = 0
+
     for m in maquinas:
-        #crear un documento técnico sin campos nulos
+        # Documento corregido (company_id)
         doc = Document(
-            title=f"Manual de Operación Segura - {m.serial_number}",
-            description="Documento oficial del fabricante con normativas ISO-9001 para operación y riesgos.",
-            doc_type=DocumentType.manuales,
+            title=f"Manual Técnico v{random.randint(1,5)} - {m.serial_number}",
+            description="Documentación de seguridad operacional.",
+            doc_type=random.choice(list(DocumentType)),
             status=DocumentStatus.activo,
-            version="2.1",
-            version_number=2,
+            version=f"{random.randint(1,3)}.0",
+            version_number=1,
             file_url=f"https://storage.provider.com/docs/{m.id}.pdf",
-            file_name=f"manual_seguridad_{m.model}.pdf",
-            file_size=random.randint(1024, 15000), # Tamaño en KB
+            file_name=f"doc_{m.model}.pdf",
+            file_size=random.randint(2048, 25000), 
             file_type="application/pdf",
             valid_from=now - timedelta(days=100),
             valid_until=now + timedelta(days=365),
             uploaded_by_id=admin.id,
             machine_id=m.id,
+            company_id=company.id,  # CORRECCIÓN APLICADA AQUÍ
             is_active=True
         )
         db.add(doc)
-        db.commit()
-        db.refresh(doc)
+        db.flush()
+        docs_creados += 1
 
-        # simular que el operador leyó el documento
-        lectura = DocumentReadConfirmation(
-            document_id=doc.id,
-            user_id=operador.id,
-            read_at=now - timedelta(days=2),
-            confirmed_at=now - timedelta(days=1),
-            notes="He leído y comprendido los riesgos de operación del equipo."
-        )
-        db.add(lectura)
+        # Confirmación de lectura aleatoria (solo para el 50% de las máquinas)
+        if random.choice([True, False]):
+            lectura = DocumentReadConfirmation(
+                document_id=doc.id,
+                user_id=operador.id,
+                read_at=now - timedelta(days=random.randint(1, 10)),
+                confirmed_at=now - timedelta(days=random.randint(1, 5)),
+                notes="Leído y aceptado."
+            )
+            db.add(lectura)
 
-        # tarea completada en el pasado
+        # Tarea histórica completada
         tarea_pasada = MaintenanceTask(
-            title="Calibración de Sensores Térmicos",
-            description="Revisión mensual obligatoria de temperatura del motor principal.",
+            title=f"Revisión de rutina - {m.serial_number}",
+            description="Mantenimiento preventivo mensual.",
             maintenance_type=MaintenanceType.preventivo,
             status=TaskStatus.completado,
-            priority=TaskPriority.mediano,
-            scheduled_date=now - timedelta(days=15),
-            started_at=now - timedelta(days=15, hours=2),
-            completed_at=now - timedelta(days=15),
-            due_date=now - timedelta(days=10),
-            completion_notes="Sensores calibrados a 45°C. Se reemplazó filtro de aire secundario.",
+            priority=random.choice(list(TaskPriority)),
+            scheduled_date=now - timedelta(days=30),
+            started_at=now - timedelta(days=30, hours=2),
+            completed_at=now - timedelta(days=30),
+            due_date=now - timedelta(days=25),
+            completion_notes="Todo en orden operativo.",
             estimated_hours=4,
-            actual_hours=5,
+            actual_hours=random.randint(3, 6),
             machine_id=m.id,
             assigned_to_id=tecnico.id,
             created_by_id=supervisor.id
         )
         db.add(tarea_pasada)
-        db.commit()
-        db.refresh(tarea_pasada)
+        db.flush()
+        tareas_creadas += 1
 
-        # log de actividad para la tarea completada
         log = MaintenanceActivityLog(
             task_id=tarea_pasada.id,
             user_id=tecnico.id,
             previous_status=TaskStatus.en_progreso,
             new_status=TaskStatus.completado,
-            notes="Pruebas de estrés exitosas, máquina liberada para producción."
+            notes="Cierre de orden de trabajo."
         )
         db.add(log)
 
-        # tarea pendiente o crítica hacia el futuro
-        tarea_futura = MaintenanceTask(
-            title="Cambio de Rodamientos Eje Central",
-            description="Vibración anómala reportada por el operador. Requiere intervención profunda.",
-            maintenance_type=MaintenanceType.correctivo,
-            status=TaskStatus.pendiente if m.status is MachineStatus.operativa else TaskStatus.en_progreso,
-            priority=TaskPriority.critico,
-            scheduled_date=now + timedelta(days=2),
-            started_at=now if m.status is not  MachineStatus.operativa else None,
-            completed_at=None,
-            due_date=now + timedelta(days=3),
-            completion_notes="A la espera de repuestos importados.", # Nota aunque no esté completada
-            estimated_hours=12,
-            actual_hours=2 if m.status is not MachineStatus.operativa else None,
-            machine_id=m.id,
-            assigned_to_id=tecnico.id,
-            created_by_id=supervisor.id
-        )
-        db.add(tarea_futura)
-        
-    db.commit()
+        # Si la máquina no está operativa, crear tarea pendiente o en progreso
+        if m.status in [MachineStatus.fallas, MachineStatus.mantenimiento]:
+            tarea_activa = MaintenanceTask(
+                title=f"Reparación Urgente - {m.serial_number}",
+                description="Falla detectada durante turno.",
+                maintenance_type=MaintenanceType.correctivo,
+                status=TaskStatus.en_progreso if m.status == MachineStatus.mantenimiento else TaskStatus.pendiente,
+                priority=TaskPriority.critico,
+                scheduled_date=now + timedelta(days=1),
+                started_at=now if m.status == MachineStatus.mantenimiento else None,
+                completed_at=None,
+                due_date=now + timedelta(days=2),
+                completion_notes=None,
+                estimated_hours=8,
+                actual_hours=None,
+                machine_id=m.id,
+                assigned_to_id=tecnico.id,
+                created_by_id=supervisor.id
+            )
+            db.add(tarea_activa)
+            tareas_creadas += 1
+
+    db.commit() # Commit masivo al final de procesar todas las máquinas
+    return docs_creados, tareas_creadas
 
 if __name__ == "__main__":
     run_seed()

@@ -9,7 +9,6 @@ CREATE TYPE maintenance_type AS ENUM ('preventivo', 'correctivo', 'predictivo', 
 CREATE TYPE task_status AS ENUM ('pendiente', 'en_progreso', 'completado', 'cancelado', 'vencido');
 CREATE TYPE task_priority AS ENUM ('bajo', 'mediano', 'alto', 'critico');
 
-
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     first_name VARCHAR(100) NOT NULL,
@@ -29,7 +28,6 @@ CREATE TABLE users (
 CREATE INDEX ix_users_email ON users(email);
 CREATE INDEX ix_users_is_active ON users(is_active);
 CREATE INDEX ix_users_is_super_admin ON users(is_super_admin);
-
 
 CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -51,12 +49,10 @@ CREATE TABLE companies (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Índices optimizados: compound para evitar N+1
 CREATE INDEX ix_companies_slug ON companies(slug);
 CREATE INDEX ix_companies_active ON companies(is_active);
 CREATE INDEX ix_companies_billing_active ON companies(billing_plan, is_active);
 CREATE INDEX ix_companies_created_at ON companies(created_at DESC);
-
 
 CREATE TABLE company_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -69,19 +65,17 @@ CREATE TABLE company_users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE RESTRICT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (invited_by_id) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE (company_id, user_id)
 );
 
--- Índices compound para queries comunes (evita N+1)
 CREATE INDEX ix_company_users_active ON company_users(company_id, is_active);
 CREATE INDEX ix_user_company_active ON company_users(user_id, is_active);
 CREATE INDEX ix_company_user_lookup ON company_users(company_id, user_id);
 CREATE INDEX ix_company_role_lookup ON company_users(company_id, role);
 CREATE INDEX ix_company_users_role ON company_users(role);
-
 
 CREATE TABLE plants (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -91,17 +85,19 @@ CREATE TABLE plants (
     description TEXT,
     logo_url VARCHAR(500),
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    created_by_id UUID,
+    updated_by_id UUID,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE RESTRICT,
+    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (updated_by_id) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE (company_id, name)
 );
 
--- Índices compound para queries frecuentes
 CREATE INDEX ix_plants_company_id ON plants(company_id);
 CREATE INDEX ix_plant_company_active ON plants(company_id, is_active);
-
 
 CREATE TABLE areas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -109,17 +105,19 @@ CREATE TABLE areas (
     description TEXT,
     plant_id UUID NOT NULL,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    created_by_id UUID,
+    updated_by_id UUID,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
+    FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE RESTRICT,
+    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (updated_by_id) REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE (plant_id, name)
 );
 
--- Índices compound para vitar N+1
 CREATE INDEX ix_areas_plant_id ON areas(plant_id);
 CREATE INDEX ix_area_plant_active ON areas(plant_id, is_active);
-
 
 CREATE TABLE machines (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -134,18 +132,20 @@ CREATE TABLE machines (
     image_url VARCHAR(500),
     area_id UUID NOT NULL,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    created_by_id UUID,
+    updated_by_id UUID,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE CASCADE
+    FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE RESTRICT,
+    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (updated_by_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Índices compound para queries comunes
 CREATE INDEX ix_machines_area_id ON machines(area_id);
 CREATE INDEX ix_machine_area_active ON machines(area_id, is_active);
 CREATE INDEX ix_machine_qr ON machines(qr_code);
 CREATE INDEX ix_machine_status ON machines(status);
-
 
 CREATE TABLE documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -163,6 +163,7 @@ CREATE TABLE documents (
     valid_from TIMESTAMP,
     valid_until TIMESTAMP,
     uploaded_by_id UUID NOT NULL,
+    updated_by_id UUID,
     machine_id UUID NOT NULL,
     company_id UUID NOT NULL,
     supersedes_id UUID,
@@ -171,12 +172,12 @@ CREATE TABLE documents (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (uploaded_by_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE,
-    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+    FOREIGN KEY (updated_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE RESTRICT,
+    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE RESTRICT,
     FOREIGN KEY (supersedes_id) REFERENCES documents(id) ON DELETE SET NULL
 );
 
--- Índices compound para queries frecuentes (evita N+1)
 CREATE INDEX ix_documents_machine_id ON documents(machine_id);
 CREATE INDEX ix_documents_company_id ON documents(company_id);
 CREATE INDEX ix_documents_uploaded_by_id ON documents(uploaded_by_id);
@@ -184,7 +185,6 @@ CREATE INDEX ix_document_machine_active ON documents(machine_id, is_active);
 CREATE INDEX ix_document_company_active ON documents(company_id, is_active);
 CREATE INDEX ix_document_status ON documents(status);
 CREATE INDEX ix_document_valid_until ON documents(valid_until);
-
 
 CREATE TABLE document_read_confirmations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -197,16 +197,14 @@ CREATE TABLE document_read_confirmations (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE RESTRICT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Índices compound para búsquedas
 CREATE INDEX ix_doc_confirmation_document ON document_read_confirmations(document_id);
 CREATE INDEX ix_doc_confirmation_user ON document_read_confirmations(user_id);
 CREATE INDEX ix_doc_read_confirmations_document_id ON document_read_confirmations(document_id, is_active);
 CREATE INDEX ix_doc_read_confirmations_user_id ON document_read_confirmations(user_id, is_active);
-
 
 CREATE TABLE maintenance_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -225,16 +223,17 @@ CREATE TABLE maintenance_tasks (
     machine_id UUID NOT NULL,
     assigned_to_id UUID,
     created_by_id UUID NOT NULL,
+    updated_by_id UUID,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE,
+    FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE RESTRICT,
     FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE RESTRICT
+    FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE RESTRICT,
+    FOREIGN KEY (updated_by_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Índices compound para queries comunes
 CREATE INDEX ix_maintenance_tasks_machine_id ON maintenance_tasks(machine_id);
 CREATE INDEX ix_maintenance_tasks_assigned_to_id ON maintenance_tasks(assigned_to_id);
 CREATE INDEX ix_maintenance_tasks_created_by_id ON maintenance_tasks(created_by_id);
@@ -243,7 +242,6 @@ CREATE INDEX ix_maintenance_assigned ON maintenance_tasks(assigned_to_id);
 CREATE INDEX ix_maintenance_status ON maintenance_tasks(status);
 CREATE INDEX ix_maintenance_priority ON maintenance_tasks(priority);
 CREATE INDEX ix_maintenance_due_date ON maintenance_tasks(due_date);
-
 
 CREATE TABLE maintenance_activity_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -256,16 +254,13 @@ CREATE TABLE maintenance_activity_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (task_id) REFERENCES maintenance_tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (task_id) REFERENCES maintenance_tasks(id) ON DELETE RESTRICT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT
 );
 
--- Índices para auditoría y búsqueda
 CREATE INDEX ix_maintenance_activity_logs_task_id ON maintenance_activity_logs(task_id);
 CREATE INDEX ix_maintenance_activity_logs_user_id ON maintenance_activity_logs(user_id);
 CREATE INDEX ix_activity_log_created_at ON maintenance_activity_logs(created_at DESC);
-
-
 
 SELECT 
     com.name AS company_name, 
