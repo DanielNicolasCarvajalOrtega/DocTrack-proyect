@@ -45,10 +45,11 @@ class MaintenanceTask(BaseModel):
     estimated_hours = Column(Integer, nullable=True)
     actual_hours = Column(Integer, nullable=True)
     
-    machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id", ondelete="CASCADE"), nullable=False, index=True)
-    assigned_to_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    
+    machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id", ondelete="RESTRICT"), nullable=False, index=True)
+    assigned_to_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    updated_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     machine = relationship("Machine", back_populates="maintenance_tasks")
     assigned_to = relationship("User", back_populates="assigned_tasks", foreign_keys=[assigned_to_id])
     created_by = relationship("User", back_populates="created_tasks", foreign_keys=[created_by_id])
@@ -68,8 +69,8 @@ class MaintenanceTask(BaseModel):
 class MaintenanceActivityLog(BaseModel):
     __tablename__ = "maintenance_activity_logs"
 
-    task_id = Column(UUID(as_uuid=True), ForeignKey("maintenance_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    task_id = Column(UUID(as_uuid=True), ForeignKey("maintenance_tasks.id", ondelete="RESTRICT"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     previous_status = Column(Enum(TaskStatus), nullable=True)
     new_status = Column(Enum(TaskStatus), nullable=False)
     notes = Column(Text, nullable=True)

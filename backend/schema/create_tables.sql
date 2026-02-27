@@ -1,5 +1,6 @@
 
 
+
 CREATE TYPE billing_plan AS ENUM ('prueba', 'basico', 'pro', 'empresas');
 CREATE TYPE company_role AS ENUM ('admin', 'supervisor', 'tecnicos', 'operadores');
 CREATE TYPE machine_status AS ENUM ('operativa', 'mantenimiento', 'fallas', 'descontinuada');
@@ -99,6 +100,20 @@ CREATE TABLE plants (
 CREATE INDEX ix_plants_company_id ON plants(company_id);
 CREATE INDEX ix_plant_company_active ON plants(company_id, is_active);
 
+-- NUEVA TABLA: Acceso a nivel Planta (Para Jefes de Planta o Técnicos Comodines)
+CREATE TABLE user_plant_access (
+    user_id UUID NOT NULL,
+    plant_id UUID NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (plant_id) REFERENCES plants(id) ON DELETE CASCADE,
+    UNIQUE(user_id, plant_id)
+);
+
+CREATE INDEX ix_user_plant_access_user ON user_plant_access(user_id);
+CREATE INDEX ix_user_plant_access_plant ON user_plant_access(plant_id);
+
 CREATE TABLE areas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(200) NOT NULL,
@@ -119,6 +134,20 @@ CREATE TABLE areas (
 CREATE INDEX ix_areas_plant_id ON areas(plant_id);
 CREATE INDEX ix_area_plant_active ON areas(plant_id, is_active);
 
+-- NUEVA TABLA: Acceso a nivel Área (Para Supervisores de Área o Técnicos Fijos)
+CREATE TABLE user_area_access (
+    user_id UUID NOT NULL,
+    area_id UUID NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE CASCADE,
+    UNIQUE(user_id, area_id)
+);
+
+CREATE INDEX ix_user_area_access_user ON user_area_access(user_id);
+CREATE INDEX ix_user_area_access_area ON user_area_access(area_id);
+
 CREATE TABLE machines (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(200) NOT NULL,
@@ -131,6 +160,9 @@ CREATE TABLE machines (
     qr_code VARCHAR(100) UNIQUE NOT NULL,
     image_url VARCHAR(500),
     area_id UUID NOT NULL,
+    -- NUEVOS CAMPOS: Seguridad por Máquina
+    requires_pin BOOLEAN DEFAULT FALSE NOT NULL,
+    security_pin VARCHAR(255),
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     created_by_id UUID,
     updated_by_id UUID,
@@ -146,6 +178,20 @@ CREATE INDEX ix_machines_area_id ON machines(area_id);
 CREATE INDEX ix_machine_area_active ON machines(area_id, is_active);
 CREATE INDEX ix_machine_qr ON machines(qr_code);
 CREATE INDEX ix_machine_status ON machines(status);
+
+-- NUEVA TABLA: Bitácora de Auditoría para Códigos de Máquinas
+CREATE TABLE machine_pin_audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    machine_id UUID NOT NULL,
+    changed_by_id UUID NOT NULL,
+    action VARCHAR(50) NOT NULL, -- Ej: 'PIN_CREATED', 'PIN_CHANGED', 'PIN_REMOVED'
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    
+    FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE,
+    FOREIGN KEY (changed_by_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_machine_pin_logs_machine ON machine_pin_audit_logs(machine_id);
 
 CREATE TABLE documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
