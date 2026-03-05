@@ -1,15 +1,19 @@
-import uuid
-import random
 import sys
+import os
+import hashlib
 from pathlib import Path
 
-# Agregar backend/api al path para encontrar el módulo 'app'
-sys.path.insert(0, str(Path(__file__).parent.parent / 'api'))
+# 1. INYECTAR LA RUTA
+BASE_DIR = Path(__file__).resolve().parent.parent / "api"
+sys.path.insert(0, str(BASE_DIR))
 
+import uuid
+import random
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from api.app.core.database import SessionLocal
-from app.core.security import hash_password
+from sqlalchemy import text
+
+# Importaciones de Modelos
 from app.modules.users.models import User
 from app.modules.compañias.models import Company, CompanyUser, CompanyRole, BillingPlan
 from app.modules.plantas.models import Plant, Area
@@ -18,63 +22,65 @@ from app.modules.documentos.models import Document, DocumentStatus, DocumentType
 from app.modules.mantenimiento.models import (
     MaintenanceType, MaintenanceTask, MaintenanceActivityLog, TaskPriority, TaskStatus
 )
+from app.core.security import hash_password
+from app.core.database import SessionLocal
 
 
 def run_seed():
     db: Session = SessionLocal()
     try:
-        print("🌱 Iniciando semilla de datos masiva de nivel corporativo...")
+        print("🌱 Iniciando semilla MASIVA: Compliance, Seguridad LOTO y Auditoría...")
         _clear_data(db)
         
-        # Datos base para las 6 empresas
         empresas_data = [
             {"name": "Carozzi S.A.", "slug": "carozzi", "plan": BillingPlan.empresas, "color": "#E3000F", "domain": "carozzi.cl"},
             {"name": "Nestlé Chile", "slug": "nestle", "plan": BillingPlan.empresas, "color": "#005A9C", "domain": "nestle.com"},
             {"name": "Coca-Cola Andina", "slug": "coca-cola", "plan": BillingPlan.pro, "color": "#F40009", "domain": "koandina.com"},
             {"name": "Siemens Energy", "slug": "siemens", "plan": BillingPlan.empresas, "color": "#009999", "domain": "siemens.com"},
-            {"name": "Toyota Industries", "slug": "toyota", "plan": BillingPlan.pro, "color": "#EB0A1E", "domain": "toyota.com"},
-            {"name": "Bayer Agro", "slug": "bayer", "plan": BillingPlan.basico, "color": "#89D329", "domain": "bayer.com"},
         ]
 
-        estadisticas = {"empresas": 0, "usuarios": 0, "plantas": 0, "maquinas": 0, "tareas": 0}
+        estadisticas = {"empresas": 0, "usuarios": 0, "plantas": 0, "areas": 0, "maquinas": 0, "maquinas_seguras": 0, "firmas_legales": 0}
 
-        # Generar todo el ecosistema por cada empresa
         for idx, emp_data in enumerate(empresas_data):
-            print(f"🏢 Construyendo ecosistema para: {emp_data['name']}...")
+            print(f"🏢 Construyendo ecosistema seguro para: {emp_data['name']}...")
             
-            # crear empresa
             company = _crear_empresa_completa(db, emp_data)
             estadisticas["empresas"] += 1
             
-            # crear usuarios de la empresa
-            users_dict = _crear_usuarios_completos(db, company, emp_data['domain'], is_first=(idx==0))
+            users_dict = _crear_usuarios_jerarquicos(db, company, emp_data['domain'], is_first=(idx==0))
             estadisticas["usuarios"] += len(users_dict)
             
-            # crear plantas y áreas
-            plantas = _crear_plantas_completas(db, company)
+            plantas, total_areas = _crear_plantas_y_accesos(db, company, users_dict)
             estadisticas["plantas"] += len(plantas)
+            estadisticas["areas"] += total_areas
             
-            # crear maquinas para esas áreas
-            maquinas = _crear_maquinas_completas(db, plantas)
+            maquinas, maquinas_seguras = _crear_maquinas_seguras(db, plantas, users_dict)
             estadisticas["maquinas"] += len(maquinas)
+            estadisticas["maquinas_seguras"] += maquinas_seguras
             
-            #  generar documentos y mantenimientos
-            _generar_comportamiento_operativo(db, maquinas, users_dict)
-            estadisticas["tareas"] += len(maquinas) * 2 # aprox 2 tareas por maquina
+            firmas = _generar_comportamiento_operativo(db, company, maquinas, users_dict)
+            estadisticas["firmas_legales"] += firmas
 
         print("-" * 60)
-        print("✅ Seed corporativo completado exitosamente!")
-        print("\n📊 Resumen de Base de Datos:")
+        print("✅ Seed corporativo con Accesos, LOTO y Compliance completado!")
+        print("\n📊 Resumen de Volumen Inyectado:")
         print(f"   🏢 Empresas creadas: {estadisticas['empresas']}")
         print(f"   👥 Usuarios activos: {estadisticas['usuarios']}")
         print(f"   🏭 Plantas operativas: {estadisticas['plantas']}")
+        print(f"   📍 Áreas generadas: {estadisticas['areas']}")
         print(f"   ⚙️  Máquinas registradas: {estadisticas['maquinas']}")
-        print(f"   🛠️  Tareas de mantenimiento: {estadisticas['tareas']}")
+        print(f"   🔒 Máquinas con PIN Activo: {estadisticas['maquinas_seguras']}")
+        print(f"   🛡️ Firmas Digitales (Escudo Legal): {estadisticas['firmas_legales']}")
         
-        print("\n🔐 Credenciales de acceso principal (Carozzi - Admin):")
-        print("   Email:    manuelesD@gmail.com")
-        print("   Password: DocTrack2027@@")
-        print("\n   (Para los demás administradores el correo es admin@[dominio] y la clave es Admin123!)")
+        print("\n🔐 CREDENCIALES DE PRUEBA (Carozzi):")
+        print("   Email Admin (Ve todo):     manuelesD@gmail.com")
+        print("   Email Auditor (ISO):       auditor@carozzi.cl")
+        print("   Email Jefe Planta:         jefe.planta@carozzi.cl")
+        print("   Email Supervisor Área:     jefe.area@carozzi.cl")
+        print("   Email Técnico Fijo:        tecnico.fijo@carozzi.cl")
+        print("   Email Operario:            operador@carozzi.cl")
+        print("   🔑 Password para todos:    DocTrack2027@@")
+        print("   🛡️ PIN DE MÁQUINAS:        1234 (Para las que exigen código)")
 
     except Exception as e:
         print(f"\n❌ Error en seed corporativo: {e}")
@@ -85,7 +91,12 @@ def run_seed():
         db.close()
 
 def _clear_data(db: Session):
-    print("🧹 Purgando registros anteriores en cascada...")
+    print("🧹 Purgando registros y bitácoras anteriores...")
+    db.execute(text("DELETE FROM machine_pin_audit_logs"))
+    db.execute(text("DELETE FROM user_area_access"))
+    db.execute(text("DELETE FROM user_plant_access"))
+    db.commit()
+    
     db.query(DocumentReadConfirmation).delete()
     db.query(MaintenanceActivityLog).delete()
     db.query(MaintenanceTask).delete()
@@ -99,21 +110,13 @@ def _clear_data(db: Session):
     db.commit()
 
 def _crear_empresa_completa(db: Session, data: dict) -> Company:
-    now = datetime.utcnow()
     company = Company(
         name=data["name"],
         slug=data["slug"],
         billing_plan=data["plan"],
-        max_users=500,
-        max_plants=20,
-        max_storage_gb=100,
-        trial_ends_at=now - timedelta(days=10), # ya pasaron la prueba
-        subscription_ends_at=now + timedelta(days=365), # suscripción de 1 año
+        max_users=5000,
+        max_plants=50,
         contact_email=f"contacto@{data['domain']}",
-        contact_phone=f"+569{random.randint(11111111, 99999999)}", # debe validarse el largo y codigo
-        address=f"Av. Corporativa {random.randint(100, 9999)}, Santiago, Chile",
-        logo_url=f"https://logo.clearbit.com/{data['domain']}",
-        primary_color=data["color"],
         is_active=True
     )
     db.add(company)
@@ -121,19 +124,19 @@ def _crear_empresa_completa(db: Session, data: dict) -> Company:
     db.refresh(company)
     return company
 
-def _crear_usuarios_completos(db: Session, company: Company, domain: str, is_first: bool) -> dict:
-    if is_first:
-        admin_email, admin_pass = "manuelesD@gmail.com", "DocTrack2027@@"
-    else:
-        admin_email, admin_pass = f"admin@{domain}", "Admin123!"
-
+def _crear_usuarios_jerarquicos(db: Session, company: Company, domain: str, is_first: bool) -> dict:
+    admin_email = "manuelesD@gmail.com" if is_first else f"admin@{domain}"
+    password = "DocTrack2027@@"
     now = datetime.utcnow()
     
     users_data = [
-        {"role": CompanyRole.admin, "email": admin_email, "pass": admin_pass, "fname": "Director", "lname": company.name},
-        {"role": CompanyRole.supervisor, "email": f"super@{domain}", "pass": "Super123!", "fname": "Jefe", "lname": "Planta"},
-        {"role": CompanyRole.tecnicos, "email": f"tecnico@{domain}", "pass": "Tecnico123!", "fname": "Especialista", "lname": "Mantenimiento"},
-        {"role": CompanyRole.operadores, "email": f"operador@{domain}", "pass": "Operador123!", "fname": "Operario", "lname": "Línea"}
+        {"role": CompanyRole.admin, "type": "admin", "email": admin_email, "fname": "Director", "lname": company.name},
+        {"role": CompanyRole.auditor, "type": "auditor", "email": f"auditor@{domain}", "fname": "Auditor", "lname": "Externo ISO"},
+        {"role": CompanyRole.supervisor, "type": "jefe_planta", "email": f"jefe.planta@{domain}", "fname": "Gerente", "lname": "Planta"},
+        {"role": CompanyRole.supervisor, "type": "jefe_area", "email": f"jefe.area@{domain}", "fname": "Supervisor", "lname": "Área"},
+        {"role": CompanyRole.tecnicos, "type": "tecnico_libre", "email": f"tecnico.libre@{domain}", "fname": "Técnico", "lname": "Comodín"},
+        {"role": CompanyRole.tecnicos, "type": "tecnico_fijo", "email": f"tecnico.fijo@{domain}", "fname": "Técnico", "lname": "Línea"},
+        {"role": CompanyRole.operadores, "type": "operador", "email": f"operador@{domain}", "fname": "Operario", "lname": "Base"}
     ]
 
     creados = {}
@@ -142,18 +145,12 @@ def _crear_usuarios_completos(db: Session, company: Company, domain: str, is_fir
             first_name=ud["fname"],
             last_name=ud["lname"],
             email=ud["email"],
-            password_hash=hash_password(ud["pass"]),
-            phone=f"+569{random.randint(10000000, 99999999)}", 
-            avatar_url=f"https://ui-avatars.com/api/?name={ud['fname']}+{ud['lname']}&background=random",
-            is_super_admin=False,
+            password_hash=hash_password(password),
             email_verified=True,
-            last_login_at=now - timedelta(hours=random.randint(1, 48)),
             is_active=True
         )
-        
         db.add(u)
-        db.commit()
-        db.refresh(u)
+        db.flush()
         
         cu = CompanyUser(
             company_id=company.id,
@@ -162,163 +159,158 @@ def _crear_usuarios_completos(db: Session, company: Company, domain: str, is_fir
             joined_at=now - timedelta(days=random.randint(30, 300))
         )
         db.add(cu)
-        db.commit()
+        db.flush()
+        creados[ud["type"]] = u
         
-        creados[ud["role"].value] = u
-        
+    db.commit()
     return creados
 
-def _crear_plantas_completas(db: Session, company: Company) -> list[Plant]:
+def _crear_plantas_y_accesos(db: Session, company: Company, users: dict) -> tuple[list[Plant], int]:
     plantas = []
-    # 2 Plantas por empresa
-    for i in range(1, 3):
+    total_areas = 0
+    jefe_planta = users["jefe_planta"]
+    tecnico_libre = users["tecnico_libre"]
+    jefe_area = users["jefe_area"]
+    tecnico_fijo = users["tecnico_fijo"]
+
+    for i in range(1, 4):
         p = Plant(
-            name=f"Planta Principal {company.name} - 0{i}",
+            name=f"Planta Procesadora {company.name} - 0{i}",
             company_id=company.id,
-            location=f"Sector Industrial {random.choice(['Norte', 'Sur', 'Centro'])}, Lote {random.randint(1,50)}",
-            description=f"Planta dedicada a la producción y ensamblaje central de la corporación {company.name}.",
-            logo_url=company.logo_url,
+            location=f"Sector Industrial, Lote {random.randint(1,500)}",
             is_active=True
         )
         db.add(p)
-        db.commit()
-        db.refresh(p)
+        db.flush()
         
-        # 2 Áreas por planta
-        for area_name in ["Línea de Producción A", "Sala de Máquinas Críticas"]:
-            a = Area(
-                name=area_name,
-                description=f"Área operativa de alta demanda en {p.name}.",
-                plant_id=p.id,
-                is_active=True
-            )
+        db.execute(text("INSERT INTO user_plant_access (user_id, plant_id) VALUES (:u, :p)"), {"u": jefe_planta.id, "p": p.id})
+        db.execute(text("INSERT INTO user_plant_access (user_id, plant_id) VALUES (:u, :p)"), {"u": tecnico_libre.id, "p": p.id})
+
+        tipos_areas = ["Línea de Envasado", "Sala de Máquinas", "Refrigeración"]
+        for j, tipo in enumerate(tipos_areas, 1):
+            a = Area(name=f"{tipo} {j}-{p.name[-2:]}", plant_id=p.id, is_active=True)
             db.add(a)
-            db.commit()
+            db.flush()
+            total_areas += 1
+            
+            db.execute(text("INSERT INTO user_area_access (user_id, area_id) VALUES (:u, :a)"), {"u": jefe_area.id, "a": a.id})
+            db.execute(text("INSERT INTO user_area_access (user_id, area_id) VALUES (:u, :a)"), {"u": tecnico_fijo.id, "a": a.id})
             
         plantas.append(p)
-    return plantas
+        
+    db.commit()
+    return plantas, total_areas
 
-def _crear_maquinas_completas(db: Session, plantas: list[Plant]) -> list[Machine]:
+def _crear_maquinas_seguras(db: Session, plantas: list[Plant], users: dict) -> tuple[list[Machine], int]:
     maquinas = []
-    marcas = ["Siemens", "Bosch", "Caterpillar", "ABB", "General Electric"]
-    
+    maquinas_seguras = 0
+    jefe_area = users["jefe_area"]
+    default_pin_hash = hash_password("1234")
+
     for planta in plantas:
         for area in planta.areas:
-            # 2 Máquinas por área
-            for i in range(2):
+            for i in range(1, 10):
                 serial = f"SN-{uuid.uuid4().hex[:8].upper()}"
+                req_pin = random.choice([True, False, False]) 
+                sec_pin = default_pin_hash if req_pin else None
+
                 m = Machine(
-                    name=f"Equipo Industrial Tipo {random.choice(['A', 'B', 'X'])}",
-                    model=f"MOD-{random.randint(1000, 9000)}",
-                    brand=random.choice(marcas),
+                    name=f"Equipo {random.choice(['Extrusora', 'Motor', 'Horno', 'Compresor'])}",
+                    model=f"MOD-{random.randint(1000, 9999)}",
                     serial_number=serial,
-                    description=f"Equipo de alto tonelaje para procesamiento en línea continua. Mantenimiento requerido cada 500 horas.",
-                    location_detail=f"Pasillo {random.randint(1,5)}, Estación {random.randint(1,20)}",
-                    status=random.choice(list(MachineStatus)), # Status aleatorio
+                    status=random.choices(list(MachineStatus), weights=[70, 10, 15, 5])[0],
                     qr_code=f"QR-{serial}",
-                    image_url=f"https://via.placeholder.com/500x300.png?text=Maquina+{serial}",
                     area_id=area.id,
+                    requires_pin=req_pin,
+                    security_pin=sec_pin,
                     is_active=True
                 )
                 db.add(m)
-                db.commit()
-                db.refresh(m)
-                maquinas.append(m)
-    return maquinas
+                db.flush() 
 
-def _generar_comportamiento_operativo(db: Session, maquinas: list[Machine], users: dict):
+                if req_pin:
+                    maquinas_seguras += 1
+                    db.execute(
+                        text("INSERT INTO machine_pin_audit_logs (machine_id, changed_by_id, action) VALUES (:m, :u, 'PIN_CREATED')"),
+                        {"m": m.id, "u": jefe_area.id}
+                    )
+                maquinas.append(m)
+                
+    db.commit()
+    return maquinas, maquinas_seguras
+
+def _generar_comportamiento_operativo(db: Session, company: Company, maquinas: list[Machine], users: dict) -> int:
     now = datetime.utcnow()
-    admin = users[CompanyRole.admin.value]
-    supervisor = users[CompanyRole.supervisor.value]
-    tecnico = users[CompanyRole.tecnicos.value]
-    operador = users[CompanyRole.operadores.value]
+    admin = users["admin"]
+    supervisor_area = users["jefe_area"]
+    tecnico = users["tecnico_fijo"]
+    operador = users["operador"]
+    firmas_creadas = 0
 
     for m in maquinas:
-        #crear un documento técnico sin campos nulos
+        # 1. Documento de Seguridad
         doc = Document(
-            title=f"Manual de Operación Segura - {m.serial_number}",
-            description="Documento oficial del fabricante con normativas ISO-9001 para operación y riesgos.",
-            doc_type=DocumentType.manuales,
+            title=f"Manual de Riesgos LOTO - {m.serial_number}",
+            doc_type=DocumentType.instrucciones_seguridad,
             status=DocumentStatus.activo,
-            version="2.1",
-            version_number=2,
             file_url=f"https://storage.provider.com/docs/{m.id}.pdf",
-            file_name=f"manual_seguridad_{m.model}.pdf",
-            file_size=random.randint(1024, 15000), # Tamaño en KB
-            file_type="application/pdf",
-            valid_from=now - timedelta(days=100),
-            valid_until=now + timedelta(days=365),
+            file_name=f"seguridad_{m.model}.pdf",
             uploaded_by_id=admin.id,
             machine_id=m.id,
+            company_id=company.id,
             is_active=True
         )
         db.add(doc)
-        db.commit()
-        db.refresh(doc)
+        db.flush()
 
-        # simular que el operador leyó el documento
-        lectura = DocumentReadConfirmation(
+        # 2. ESCUDO LEGAL: El operario acepta los riesgos y firma
+        hash_str = f"{doc.id}-{operador.id}-{now.timestamp()}".encode('utf-8')
+        firma_hash = hashlib.sha256(hash_str).hexdigest()
+        
+        firma = DocumentReadConfirmation(
             document_id=doc.id,
             user_id=operador.id,
             read_at=now - timedelta(days=2),
-            confirmed_at=now - timedelta(days=1),
-            notes="He leído y comprendido los riesgos de operación del equipo."
+            confirmed_at=now - timedelta(days=2),
+            risks_accepted =True,
+            signature_hash=firma_hash
         )
-        db.add(lectura)
+        db.add(firma)
+        firmas_creadas += 1
 
-        # tarea completada en el pasado
-        tarea_pasada = MaintenanceTask(
-            title="Calibración de Sensores Térmicos",
-            description="Revisión mensual obligatoria de temperatura del motor principal.",
-            maintenance_type=MaintenanceType.preventivo,
-            status=TaskStatus.completado,
-            priority=TaskPriority.mediano,
-            scheduled_date=now - timedelta(days=15),
-            started_at=now - timedelta(days=15, hours=2),
-            completed_at=now - timedelta(days=15),
-            due_date=now - timedelta(days=10),
-            completion_notes="Sensores calibrados a 45°C. Se reemplazó filtro de aire secundario.",
-            estimated_hours=4,
-            actual_hours=5,
-            machine_id=m.id,
-            assigned_to_id=tecnico.id,
-            created_by_id=supervisor.id
-        )
-        db.add(tarea_pasada)
-        db.commit()
-        db.refresh(tarea_pasada)
+        # 3. REPORTE RÁPIDO (Falla) vs LOTO (Mantenimiento)
+        if m.status == MachineStatus.fallas:
+            # Operario reporta en 3 clics con foto
+            tarea = MaintenanceTask(
+                title=f"Reporte Visual: Fuga en {m.serial_number}",
+                maintenance_type=MaintenanceType.reporte_falla,
+                status=TaskStatus.pendiente,
+                priority=TaskPriority.alto,
+                machine_id=m.id,
+                created_by_id=operador.id,
+                evidence_photo_url=f"https://storage.provider.com/photos/falla_{m.id}.jpg",
+                completion_notes="Fuga de presión detectada. Adjunto foto de la válvula."
+            )
+            db.add(tarea)
 
-        # log de actividad para la tarea completada
-        log = MaintenanceActivityLog(
-            task_id=tarea_pasada.id,
-            user_id=tecnico.id,
-            previous_status=TaskStatus.en_progreso,
-            new_status=TaskStatus.completado,
-            notes="Pruebas de estrés exitosas, máquina liberada para producción."
-        )
-        db.add(log)
+        elif m.status == MachineStatus.mantenimiento:
+            # Mantenimiento seguro exigiendo candado LOTO
+            tarea = MaintenanceTask(
+                title=f"Reparación Crítica (Protocolo LOTO) - {m.serial_number}",
+                maintenance_type=MaintenanceType.,
+                status=TaskStatus.en_progreso,
+                priority=TaskPriority.critico,
+                machine_id=m.id,
+                assigned_to_id=tecnico.id,
+                created_by_id=supervisor_area.id,
+                is_loto_required=True,
+                loto_applied_at=now - timedelta(minutes=45),
+                loto_applied_by_id=tecnico.id
+            )
+            db.add(tarea)
 
-        # tarea pendiente o crítica hacia el futuro
-        tarea_futura = MaintenanceTask(
-            title="Cambio de Rodamientos Eje Central",
-            description="Vibración anómala reportada por el operador. Requiere intervención profunda.",
-            maintenance_type=MaintenanceType.correctivo,
-            status=TaskStatus.pendiente if m.status is MachineStatus.operativa else TaskStatus.en_progreso,
-            priority=TaskPriority.critico,
-            scheduled_date=now + timedelta(days=2),
-            started_at=now if m.status is not  MachineStatus.operativa else None,
-            completed_at=None,
-            due_date=now + timedelta(days=3),
-            completion_notes="A la espera de repuestos importados.", # Nota aunque no esté completada
-            estimated_hours=12,
-            actual_hours=2 if m.status is not MachineStatus.operativa else None,
-            machine_id=m.id,
-            assigned_to_id=tecnico.id,
-            created_by_id=supervisor.id
-        )
-        db.add(tarea_futura)
-        
     db.commit()
+    return firmas_creadas
 
 if __name__ == "__main__":
     run_seed()
