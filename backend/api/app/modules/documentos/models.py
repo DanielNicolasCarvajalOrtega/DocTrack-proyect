@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from sqlalchemy import Column, String, Text, Enum, ForeignKey, Integer, DateTime, Index
+from sqlalchemy import Column, String, Text, Enum, ForeignKey, Integer, DateTime, Index, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.base_models import BaseModel
@@ -38,7 +38,7 @@ class Document(BaseModel):
     file_type = Column(String(50), nullable=True)
     valid_from = Column(DateTime, nullable=True)
     valid_until = Column(DateTime, nullable=True)
-
+    
     uploaded_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False )
     updated_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -46,7 +46,7 @@ class Document(BaseModel):
     supersedes_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
     company = relationship("Company", back_populates="documents")
     machine = relationship("Machine", back_populates="documents")
-    uploaded_by = relationship("User", foreign_keys=[updated_by_id])
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
     updated_by = relationship("User", foreign_keys=[updated_by_id])
     read_confirmations = relationship("DocumentReadConfirmation", back_populates="document", cascade="all, delete-orphan")
     supersedes = relationship("Document", 
@@ -71,6 +71,8 @@ class DocumentReadConfirmation(BaseModel):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     read_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     confirmed_at = Column(DateTime, nullable=True)
+    risks_accepted = Column(Boolean, default=False, nullable=False)
+    signature_hash = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
     
     document = relationship("Document", back_populates="read_confirmations")

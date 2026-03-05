@@ -1,6 +1,9 @@
 import sys
 import os
+import hashlib
 from pathlib import Path
+
+# 1. INYECTAR LA RUTA
 BASE_DIR = Path(__file__).resolve().parent.parent / "api"
 sys.path.insert(0, str(BASE_DIR))
 
@@ -9,6 +12,8 @@ import random
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+
+# Importaciones de Modelos
 from app.modules.users.models import User
 from app.modules.compañias.models import Company, CompanyUser, CompanyRole, BillingPlan
 from app.modules.plantas.models import Plant, Area
@@ -20,10 +25,11 @@ from app.modules.mantenimiento.models import (
 from app.core.security import hash_password
 from app.core.database import SessionLocal
 
+
 def run_seed():
     db: Session = SessionLocal()
     try:
-        print("🌱 Iniciando semilla de datos MASIVA con Seguridad Granular...")
+        print("🌱 Iniciando semilla MASIVA: Compliance, Seguridad LOTO y Auditoría...")
         _clear_data(db)
         
         empresas_data = [
@@ -33,7 +39,7 @@ def run_seed():
             {"name": "Siemens Energy", "slug": "siemens", "plan": BillingPlan.empresas, "color": "#009999", "domain": "siemens.com"},
         ]
 
-        estadisticas = {"empresas": 0, "usuarios": 0, "plantas": 0, "areas": 0, "maquinas": 0, "maquinas_seguras": 0}
+        estadisticas = {"empresas": 0, "usuarios": 0, "plantas": 0, "areas": 0, "maquinas": 0, "maquinas_seguras": 0, "firmas_legales": 0}
 
         for idx, emp_data in enumerate(empresas_data):
             print(f"🏢 Construyendo ecosistema seguro para: {emp_data['name']}...")
@@ -52,10 +58,11 @@ def run_seed():
             estadisticas["maquinas"] += len(maquinas)
             estadisticas["maquinas_seguras"] += maquinas_seguras
             
-            _generar_comportamiento_operativo(db, company, maquinas, users_dict)
+            firmas = _generar_comportamiento_operativo(db, company, maquinas, users_dict)
+            estadisticas["firmas_legales"] += firmas
 
         print("-" * 60)
-        print("✅ Seed corporativo con Accesos y Seguridad completado!")
+        print("✅ Seed corporativo con Accesos, LOTO y Compliance completado!")
         print("\n📊 Resumen de Volumen Inyectado:")
         print(f"   🏢 Empresas creadas: {estadisticas['empresas']}")
         print(f"   👥 Usuarios activos: {estadisticas['usuarios']}")
@@ -63,13 +70,15 @@ def run_seed():
         print(f"   📍 Áreas generadas: {estadisticas['areas']}")
         print(f"   ⚙️  Máquinas registradas: {estadisticas['maquinas']}")
         print(f"   🔒 Máquinas con PIN Activo: {estadisticas['maquinas_seguras']}")
+        print(f"   🛡️ Firmas Digitales (Escudo Legal): {estadisticas['firmas_legales']}")
         
         print("\n🔐 CREDENCIALES DE PRUEBA (Carozzi):")
         print("   Email Admin (Ve todo):     manuelesD@gmail.com")
+        print("   Email Auditor (ISO):       auditor@carozzi.cl")
         print("   Email Jefe Planta:         jefe.planta@carozzi.cl")
         print("   Email Supervisor Área:     jefe.area@carozzi.cl")
-        print("   Email Técnico Libre:       tecnico.libre@carozzi.cl")
         print("   Email Técnico Fijo:        tecnico.fijo@carozzi.cl")
+        print("   Email Operario:            operador@carozzi.cl")
         print("   🔑 Password para todos:    DocTrack2027@@")
         print("   🛡️ PIN DE MÁQUINAS:        1234 (Para las que exigen código)")
 
@@ -83,13 +92,11 @@ def run_seed():
 
 def _clear_data(db: Session):
     print("🧹 Purgando registros y bitácoras anteriores...")
-    # Borrar tablas intermedias nuevas usando SQL raw
     db.execute(text("DELETE FROM machine_pin_audit_logs"))
     db.execute(text("DELETE FROM user_area_access"))
     db.execute(text("DELETE FROM user_plant_access"))
     db.commit()
     
-    # Borrar el resto mediante ORM
     db.query(DocumentReadConfirmation).delete()
     db.query(MaintenanceActivityLog).delete()
     db.query(MaintenanceTask).delete()
@@ -110,8 +117,6 @@ def _crear_empresa_completa(db: Session, data: dict) -> Company:
         max_users=5000,
         max_plants=50,
         contact_email=f"contacto@{data['domain']}",
-        logo_url=f"https://logo.clearbit.com/{data['domain']}",
-        primary_color=data["color"],
         is_active=True
     )
     db.add(company)
@@ -124,11 +129,11 @@ def _crear_usuarios_jerarquicos(db: Session, company: Company, domain: str, is_f
     password = "DocTrack2027@@"
     now = datetime.utcnow()
     
-    # Definimos los roles jerárquicos
     users_data = [
         {"role": CompanyRole.admin, "type": "admin", "email": admin_email, "fname": "Director", "lname": company.name},
+        {"role": CompanyRole.auditor, "type": "auditor", "email": f"auditor@{domain}", "fname": "Auditor", "lname": "Externo ISO"},
         {"role": CompanyRole.supervisor, "type": "jefe_planta", "email": f"jefe.planta@{domain}", "fname": "Gerente", "lname": "Planta"},
-        {"role": CompanyRole.supervisor, "type": "jefe_area", "email": f"jefe.area@{domain}", "fname": "Supervisor", "lname": "Área Envasado"},
+        {"role": CompanyRole.supervisor, "type": "jefe_area", "email": f"jefe.area@{domain}", "fname": "Supervisor", "lname": "Área"},
         {"role": CompanyRole.tecnicos, "type": "tecnico_libre", "email": f"tecnico.libre@{domain}", "fname": "Técnico", "lname": "Comodín"},
         {"role": CompanyRole.tecnicos, "type": "tecnico_fijo", "email": f"tecnico.fijo@{domain}", "fname": "Técnico", "lname": "Línea"},
         {"role": CompanyRole.operadores, "type": "operador", "email": f"operador@{domain}", "fname": "Operario", "lname": "Base"}
@@ -163,52 +168,33 @@ def _crear_usuarios_jerarquicos(db: Session, company: Company, domain: str, is_f
 def _crear_plantas_y_accesos(db: Session, company: Company, users: dict) -> tuple[list[Plant], int]:
     plantas = []
     total_areas = 0
-    
     jefe_planta = users["jefe_planta"]
     tecnico_libre = users["tecnico_libre"]
     jefe_area = users["jefe_area"]
     tecnico_fijo = users["tecnico_fijo"]
 
-    for i in range(1, 4): # 3 Plantas
+    for i in range(1, 4):
         p = Plant(
             name=f"Planta Procesadora {company.name} - 0{i}",
             company_id=company.id,
-            location=f"Sector Industrial {random.choice(['Norte', 'Sur'])}, Lote {random.randint(1,500)}",
+            location=f"Sector Industrial, Lote {random.randint(1,500)}",
             is_active=True
         )
         db.add(p)
         db.flush()
         
-        # 1. OTORGAR ACCESO NIVEL PLANTA
-        db.execute(
-            text("INSERT INTO user_plant_access (user_id, plant_id) VALUES (:u, :p)"),
-            {"u": jefe_planta.id, "p": p.id}
-        )
-        db.execute(
-            text("INSERT INTO user_plant_access (user_id, plant_id) VALUES (:u, :p)"),
-            {"u": tecnico_libre.id, "p": p.id}
-        )
+        db.execute(text("INSERT INTO user_plant_access (user_id, plant_id) VALUES (:u, :p)"), {"u": jefe_planta.id, "p": p.id})
+        db.execute(text("INSERT INTO user_plant_access (user_id, plant_id) VALUES (:u, :p)"), {"u": tecnico_libre.id, "p": p.id})
 
-        tipos_areas = ["Línea de Envasado", "Sala de Máquinas", "Refrigeración", "Almacenamiento"]
+        tipos_areas = ["Línea de Envasado", "Sala de Máquinas", "Refrigeración"]
         for j, tipo in enumerate(tipos_areas, 1):
-            a = Area(
-                name=f"{tipo} {j}-{p.name[-2:]}",
-                plant_id=p.id,
-                is_active=True
-            )
+            a = Area(name=f"{tipo} {j}-{p.name[-2:]}", plant_id=p.id, is_active=True)
             db.add(a)
             db.flush()
             total_areas += 1
             
-            # 2. OTORGAR ACCESO NIVEL ÁREA
-            db.execute(
-                text("INSERT INTO user_area_access (user_id, area_id) VALUES (:u, :a)"),
-                {"u": jefe_area.id, "a": a.id}
-            )
-            db.execute(
-                text("INSERT INTO user_area_access (user_id, area_id) VALUES (:u, :a)"),
-                {"u": tecnico_fijo.id, "a": a.id}
-            )
+            db.execute(text("INSERT INTO user_area_access (user_id, area_id) VALUES (:u, :a)"), {"u": jefe_area.id, "a": a.id})
+            db.execute(text("INSERT INTO user_area_access (user_id, area_id) VALUES (:u, :a)"), {"u": tecnico_fijo.id, "a": a.id})
             
         plantas.append(p)
         
@@ -219,21 +205,17 @@ def _crear_maquinas_seguras(db: Session, plantas: list[Plant], users: dict) -> t
     maquinas = []
     maquinas_seguras = 0
     jefe_area = users["jefe_area"]
-    
-    # Pre-calcular el hash del PIN "1234" para que sea rápido
     default_pin_hash = hash_password("1234")
 
     for planta in plantas:
         for area in planta.areas:
-            for i in range(1, 10): # 10 Máquinas por área
+            for i in range(1, 10):
                 serial = f"SN-{uuid.uuid4().hex[:8].upper()}"
-                
-                # 30% de probabilidad de que la máquina requiera PIN
                 req_pin = random.choice([True, False, False]) 
                 sec_pin = default_pin_hash if req_pin else None
 
                 m = Machine(
-                    name=f"Equipo de Línea {random.choice(['Extrusora', 'Motor', 'Banda', 'Horno', 'Compresor'])}",
+                    name=f"Equipo {random.choice(['Extrusora', 'Motor', 'Horno', 'Compresor'])}",
                     model=f"MOD-{random.randint(1000, 9999)}",
                     serial_number=serial,
                     status=random.choices(list(MachineStatus), weights=[70, 10, 15, 5])[0],
@@ -248,33 +230,31 @@ def _crear_maquinas_seguras(db: Session, plantas: list[Plant], users: dict) -> t
 
                 if req_pin:
                     maquinas_seguras += 1
-                    # 3. CREAR AUDIT TRAIL DEL PIN
                     db.execute(
                         text("INSERT INTO machine_pin_audit_logs (machine_id, changed_by_id, action) VALUES (:m, :u, 'PIN_CREATED')"),
                         {"m": m.id, "u": jefe_area.id}
                     )
-
                 maquinas.append(m)
                 
     db.commit()
     return maquinas, maquinas_seguras
 
-def _generar_comportamiento_operativo(db: Session, company: Company, maquinas: list[Machine], users: dict):
+def _generar_comportamiento_operativo(db: Session, company: Company, maquinas: list[Machine], users: dict) -> int:
     now = datetime.utcnow()
     admin = users["admin"]
     supervisor_area = users["jefe_area"]
     tecnico = users["tecnico_fijo"]
+    operador = users["operador"]
+    firmas_creadas = 0
 
     for m in maquinas:
-        # Documento Técnico
+        # 1. Documento de Seguridad
         doc = Document(
-            title=f"Manual de Seguridad - {m.serial_number}",
+            title=f"Manual de Riesgos LOTO - {m.serial_number}",
             doc_type=DocumentType.instrucciones_seguridad,
             status=DocumentStatus.activo,
-            version="1.0",
-            version_number=1,
             file_url=f"https://storage.provider.com/docs/{m.id}.pdf",
-            file_name=f"doc_{m.model}.pdf",
+            file_name=f"seguridad_{m.model}.pdf",
             uploaded_by_id=admin.id,
             machine_id=m.id,
             company_id=company.id,
@@ -283,21 +263,54 @@ def _generar_comportamiento_operativo(db: Session, company: Company, maquinas: l
         db.add(doc)
         db.flush()
 
-        # Tarea pendiente asignada al técnico del área
-        if m.status in [MachineStatus.fallas, MachineStatus.mantenimiento]:
+        # 2. ESCUDO LEGAL: El operario acepta los riesgos y firma
+        hash_str = f"{doc.id}-{operador.id}-{now.timestamp()}".encode('utf-8')
+        firma_hash = hashlib.sha256(hash_str).hexdigest()
+        
+        firma = DocumentReadConfirmation(
+            document_id=doc.id,
+            user_id=operador.id,
+            read_at=now - timedelta(days=2),
+            confirmed_at=now - timedelta(days=2),
+            risks_accepted =True,
+            signature_hash=firma_hash
+        )
+        db.add(firma)
+        firmas_creadas += 1
+
+        # 3. REPORTE RÁPIDO (Falla) vs LOTO (Mantenimiento)
+        if m.status == MachineStatus.fallas:
+            # Operario reporta en 3 clics con foto
             tarea = MaintenanceTask(
-                title=f"Reparación Asignada - {m.serial_number}",
-                maintenance_type=MaintenanceType.correctivo,
+                title=f"Reporte Visual: Fuga en {m.serial_number}",
+                maintenance_type=MaintenanceType.reporte_falla,
                 status=TaskStatus.pendiente,
+                priority=TaskPriority.alto,
+                machine_id=m.id,
+                created_by_id=operador.id,
+                evidence_photo_url=f"https://storage.provider.com/photos/falla_{m.id}.jpg",
+                completion_notes="Fuga de presión detectada. Adjunto foto de la válvula."
+            )
+            db.add(tarea)
+
+        elif m.status == MachineStatus.mantenimiento:
+            # Mantenimiento seguro exigiendo candado LOTO
+            tarea = MaintenanceTask(
+                title=f"Reparación Crítica (Protocolo LOTO) - {m.serial_number}",
+                maintenance_type=MaintenanceType.,
+                status=TaskStatus.en_progreso,
                 priority=TaskPriority.critico,
-                scheduled_date=now + timedelta(days=1),
                 machine_id=m.id,
                 assigned_to_id=tecnico.id,
-                created_by_id=supervisor_area.id
+                created_by_id=supervisor_area.id,
+                is_loto_required=True,
+                loto_applied_at=now - timedelta(minutes=45),
+                loto_applied_by_id=tecnico.id
             )
             db.add(tarea)
 
     db.commit()
+    return firmas_creadas
 
 if __name__ == "__main__":
     run_seed()

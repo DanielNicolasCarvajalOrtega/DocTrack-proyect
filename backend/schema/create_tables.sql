@@ -1,12 +1,12 @@
 
-
-
 CREATE TYPE billing_plan AS ENUM ('prueba', 'basico', 'pro', 'empresas');
-CREATE TYPE company_role AS ENUM ('admin', 'supervisor', 'tecnicos', 'operadores');
+--Se agregó el rol 'auditor'
+CREATE TYPE company_role AS ENUM ('admin', 'auditor', 'supervisor', 'tecnicos', 'operadores');
 CREATE TYPE machine_status AS ENUM ('operativa', 'mantenimiento', 'fallas', 'descontinuada');
 CREATE TYPE document_type AS ENUM ('manuales', 'certificados', 'instrucciones_seguridad', 'mantenimiento', 'hoja_tecnica', 'procedimientos', 'otros');
 CREATE TYPE document_status AS ENUM ('activo', 'expirado', 'sustituido', 'borrador');
-CREATE TYPE maintenance_type AS ENUM ('preventivo', 'correctivo', 'predictivo', 'inspeccion');
+--Enfoque en Seguridad Industrial y Reportes Rápidos
+CREATE TYPE maintenance_type AS ENUM ('preventivo', 'reporte_falla', 'auditoria_seguridad', 'bloqueo_loto');
 CREATE TYPE task_status AS ENUM ('pendiente', 'en_progreso', 'completado', 'cancelado', 'vencido');
 CREATE TYPE task_priority AS ENUM ('bajo', 'mediano', 'alto', 'critico');
 
@@ -100,7 +100,6 @@ CREATE TABLE plants (
 CREATE INDEX ix_plants_company_id ON plants(company_id);
 CREATE INDEX ix_plant_company_active ON plants(company_id, is_active);
 
--- NUEVA TABLA: Acceso a nivel Planta (Para Jefes de Planta o Técnicos Comodines)
 CREATE TABLE user_plant_access (
     user_id UUID NOT NULL,
     plant_id UUID NOT NULL,
@@ -134,7 +133,6 @@ CREATE TABLE areas (
 CREATE INDEX ix_areas_plant_id ON areas(plant_id);
 CREATE INDEX ix_area_plant_active ON areas(plant_id, is_active);
 
--- NUEVA TABLA: Acceso a nivel Área (Para Supervisores de Área o Técnicos Fijos)
 CREATE TABLE user_area_access (
     user_id UUID NOT NULL,
     area_id UUID NOT NULL,
@@ -160,7 +158,6 @@ CREATE TABLE machines (
     qr_code VARCHAR(100) UNIQUE NOT NULL,
     image_url VARCHAR(500),
     area_id UUID NOT NULL,
-    -- NUEVOS CAMPOS: Seguridad por Máquina
     requires_pin BOOLEAN DEFAULT FALSE NOT NULL,
     security_pin VARCHAR(255),
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
@@ -179,12 +176,11 @@ CREATE INDEX ix_machine_area_active ON machines(area_id, is_active);
 CREATE INDEX ix_machine_qr ON machines(qr_code);
 CREATE INDEX ix_machine_status ON machines(status);
 
--- NUEVA TABLA: Bitácora de Auditoría para Códigos de Máquinas
 CREATE TABLE machine_pin_audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     machine_id UUID NOT NULL,
     changed_by_id UUID NOT NULL,
-    action VARCHAR(50) NOT NULL, -- Ej: 'PIN_CREATED', 'PIN_CHANGED', 'PIN_REMOVED'
+    action VARCHAR(50) NOT NULL, 
     changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     
     FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE,
@@ -238,6 +234,9 @@ CREATE TABLE document_read_confirmations (
     user_id UUID NOT NULL,
     read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     confirmed_at TIMESTAMP,
+    -- NUEVO: Escudo Legal (Trazabilidad y Firma Digital)
+    risks_accepted BOOLEAN DEFAULT FALSE NOT NULL,
+    signature_hash VARCHAR(255) UNIQUE,
     notes TEXT,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -252,6 +251,7 @@ CREATE INDEX ix_doc_confirmation_user ON document_read_confirmations(user_id);
 CREATE INDEX ix_doc_read_confirmations_document_id ON document_read_confirmations(document_id, is_active);
 CREATE INDEX ix_doc_read_confirmations_user_id ON document_read_confirmations(user_id, is_active);
 
+-- NUEVO: Tareas enfocadas en Reportes Rápidos y Seguridad LOTO
 CREATE TABLE maintenance_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(300) NOT NULL,
@@ -263,9 +263,17 @@ CREATE TABLE maintenance_tasks (
     started_at TIMESTAMP,
     completed_at TIMESTAMP,
     due_date TIMESTAMP,
+    
+    -- 🛡️ Seguridad Industrial (LOTO)
+    is_loto_required BOOLEAN DEFAULT FALSE NOT NULL,
+    loto_applied_at TIMESTAMP,
+    loto_applied_by_id UUID,
+    
+    -- 📸 Evidencia Fotográfica (Solo imagen del trabajo hecho)
+    evidence_photo_url VARCHAR(500),
+    
     completion_notes TEXT,
-    estimated_hours INTEGER,
-    actual_hours INTEGER,
+    
     machine_id UUID NOT NULL,
     assigned_to_id UUID,
     created_by_id UUID NOT NULL,
@@ -277,7 +285,8 @@ CREATE TABLE maintenance_tasks (
     FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE RESTRICT,
     FOREIGN KEY (assigned_to_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE RESTRICT,
-    FOREIGN KEY (updated_by_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (updated_by_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (loto_applied_by_id) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX ix_maintenance_tasks_machine_id ON maintenance_tasks(machine_id);
@@ -307,23 +316,3 @@ CREATE TABLE maintenance_activity_logs (
 CREATE INDEX ix_maintenance_activity_logs_task_id ON maintenance_activity_logs(task_id);
 CREATE INDEX ix_maintenance_activity_logs_user_id ON maintenance_activity_logs(user_id);
 CREATE INDEX ix_activity_log_created_at ON maintenance_activity_logs(created_at DESC);
-
-SELECT 
-    com.name AS company_name, 
-    com.billing_plan, 
-    p.name AS plant_name,
-    a.name AS area_name,
-    m.name AS machine_name,
-    main.title, 
-    main.maintenance_type, 
-    main.status
-FROM companies com
-INNER JOIN plants p ON com.id = p.company_id
-INNER JOIN areas a ON p.id = a.plant_id
-INNER JOIN machines m ON a.id = m.area_id
-INNER JOIN maintenance_tasks main ON m.id = main.machine_id
-WHERE com.is_active = TRUE 
-  AND p.is_active = TRUE 
-  AND a.is_active = TRUE 
-  AND m.is_active = TRUE
-ORDER BY com.name, main.priority DESC;
