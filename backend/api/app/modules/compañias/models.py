@@ -29,6 +29,7 @@ class Company(BaseModel):
     address = Column(Text, nullable=True)
     logo_url = Column(String(500), nullable=True)
     primary_color = Column(String(7), default="#3B82F6")
+    is_active = Column(Boolean, default=True, nullable= False)
     users = relationship(
         "CompanyUser",
         back_populates="company",
@@ -45,7 +46,8 @@ class Company(BaseModel):
     documents = relationship(
         "Document",
         back_populates="company",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="selectin"
     )
     
     
@@ -60,6 +62,7 @@ class Company(BaseModel):
 
 class CompanyRole(str, enum.Enum):
     admin = "admin"
+    auditor = "auditor"
     supervisor = "supervisor"
     tecnicos = "tecnicos"
     operadores = "operadores"
@@ -68,7 +71,7 @@ class CompanyRole(str, enum.Enum):
 class CompanyUser(BaseModel):
     __tablename__ = "company_users"
 
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     role = Column(Enum(CompanyRole), nullable=False, default=CompanyRole.operadores, index=True)
     invited_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
