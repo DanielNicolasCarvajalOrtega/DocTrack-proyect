@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, String, Text, Enum, ForeignKey, DateTime, Integer, Index
+from sqlalchemy import Column, String, Text, Enum, ForeignKey, DateTime, Integer, Index, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.base_models import BaseModel
@@ -7,9 +7,11 @@ from app.core.base_models import BaseModel
 
 class MaintenanceType(str, enum.Enum):
     preventivo = "preventivo"
+    reporte_falla = "reporte_falla"
     correctivo = "correctivo"
     predictivo = "predictivo"
     inspeccion = "inspeccion"
+    bloqueo_loto = "bloqueo_loto"
 
 
 class TaskStatus(str, enum.Enum):
@@ -41,10 +43,12 @@ class MaintenanceTask(BaseModel):
     completed_at = Column(DateTime, nullable=True)
     due_date = Column(DateTime, nullable=True)
     
+    is_loto_required= Column(Boolean, nullable=False, default=False)
+    loto_applied_at = Column(DateTime, nullable=True)
+    loto_applied_by_id =Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    evidence_photo_url = Column(String(600), nullable=True)
     completion_notes = Column(Text, nullable=True)
-    estimated_hours = Column(Integer, nullable=True)
-    actual_hours = Column(Integer, nullable=True)
-    
+        
     machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id", ondelete="RESTRICT"), nullable=False, index=True)
     assigned_to_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
@@ -53,6 +57,7 @@ class MaintenanceTask(BaseModel):
     machine = relationship("Machine", back_populates="maintenance_tasks")
     assigned_to = relationship("User", back_populates="assigned_tasks", foreign_keys=[assigned_to_id])
     created_by = relationship("User", back_populates="created_tasks", foreign_keys=[created_by_id])
+    loto_aplied_by = relationship("User", foreign_keys=[loto_applied_by_id])
     activity_logs = relationship("MaintenanceActivityLog", back_populates="task", cascade="all, delete-orphan")
     
     __table_args__ = (

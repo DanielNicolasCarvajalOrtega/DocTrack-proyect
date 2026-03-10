@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def create(db:Session, company_data:dict) -> Company:
     """ crea nueva compañia con validacion de datos primero"""
 
-    missing = [f for f in ("nane", "slug") if not company_data.get(f)]
+    missing = [f for f in ("name", "slug") if not company_data.get(f)]
     if missing:
         raise ValueError(f"campos obligatorios faltantes {missing}")
     repo._validate_company_data(company_data)
@@ -31,6 +31,7 @@ def create(db:Session, company_data:dict) -> Company:
         db.commit()
         db.refresh(db_company)
         logger.info(f"[Company.create] id={db_company.id} slug ='{db_company.slug}")
+        return db_company
     except IntegrityError as err:
         db.rollback()
         logger.warning(f"[Company.create] slug= {company_data.get("slug")} -> {err.orig}")
