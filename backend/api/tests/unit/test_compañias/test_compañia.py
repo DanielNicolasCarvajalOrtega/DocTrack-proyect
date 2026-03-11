@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.modules.compañias.repository.repository import (
     CompanyRepository, _validate_color, _validate_company_data, 
     _validate_email, _validate_positive_int, _validate_slug)
-from app.modules.compañias.repository.company_repository import CompanyUserRepository
+from backend.api.app.modules.compañias.repository.company_user_repository import CompanyUserRepository
 from app.modules.compañias.models import Company, CompanyUser, CompanyRole, BillingPlan
 
 class TestCompanyRepositoryLectura:
@@ -179,6 +179,6 @@ class TestCompanyRepositoryEscritura:
     def test_update_campo_no_permitido_lanza_error(self, db, company_id):
         with pytest.raises(ValueError, match="no permitidos"):
             CompanyRepository.update(db, company_id, {"is_active": False})
-                    
+
     
     

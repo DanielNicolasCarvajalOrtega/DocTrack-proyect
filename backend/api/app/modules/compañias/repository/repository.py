@@ -1,7 +1,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 from uuid import UUID
 from sqlalchemy import exists
 from sqlalchemy.orm import Session
@@ -29,7 +29,9 @@ _COMPANY_FIELD_VALIDATORS = {
     "max_plants":    lambda v: _validate_positive_int(v, "max_plants"),
     "max_storage_gb":lambda v: _validate_positive_int(v, "max_storage_gb"),
 }
-        
+
+
+
 def _validate_slug(slug : str) -> None:
     if not slug:
         raise ValueError("slug vacio error")
@@ -79,6 +81,109 @@ def _parse_integrity_error(origin:str, context:str = "") -> str:
 
 
 class CompanyRepository:
+
+    @staticmethod
+    def create(db:Session, company_data:dict) -> Company:
+        """ crea nueva compañia con validacion de datos primero"""
+
+        missing = [f for f in ("name", "slug") if not company_data.get(f)]
+        if missing:
+            raise ValueError(f"campos obligatorios faltantes {missing}")
+        _validate_company_data(company_data)
+
+        try:
+            db_company = Company(**company_data)
+            db.add(db_company)
+            db.commit()
+            db.refresh(db_company)
+            logger.info(f"[Company.create] id={db_company.id} slug ='{db_company.slug}")
+            return db_company
+        except IntegrityError as err:
+            db.rollback()
+            logger.warning(f"[Company.create] slug= {company_data.get("slug")} -> {err.orig}")
+            raise ValueError(_parse_integrity_error(str(err.orig), "Company"))
+        except SQLAlchemyError as err:
+            db.rollback()
+            logger.error(f"[Company.create] SQLAlchemyError - {err}")
+            raise RuntimeError("Error interno en base de datos")
+        
+    @staticmethod
+    def update(db:Session, company_id: UUID, update_data: dict[str, Any]) -> Optional[Company]:
+        """ guard clauses → whitelist → validar formatos → persisten """
+        if not update_data:
+            raise ValueError("no se enviaron datos para actualizar")
+        
+        invalid_fields = set(update_data.keys()) - COMPANY_ALLOWED_UPDATE_FIELDS
+        if invalid_fields:
+            raise ValueError(f"campos no permitidos: {invalid_fields}")
+        _validate_company_data(update_data)
+
+        db_company = CompanyRepository.get_by_id(db, company_id)
+        if not db_company:
+            return None
+
+        try:
+            for key, value in update_data.items():
+                setattr(db_company, key, value)
+            db.commit()
+            db.refresh(db_company)
+            logger.info(f"[Company.update] id={company_id} campos= {list(update_data.keys())}")
+            return db_company
+        except IntegrityError as err:
+            logger.warning(f"[Company.update] IntegrityError id={company_id}: error:{ err.orig}")
+            raise ValueError(_parse_integrity_error(str(err.orig), "Company"))
+        except SQLAlchemyError as err:
+            db.rollback()
+            logger.error(f"[Company.update] SQLAlchemyError id={company_id} - {err}")
+            raise RuntimeError("Error en la base de datos")
+        
+
+    @staticmethod
+    def update_billing_plan(
+        db:Session,
+        company_id:UUID,
+        new_plan: BillingPlan,
+        subscription_ends_at: Optional[datetime] = None,
+    ) -> Optional[Company]:
+        
+        """ actualiza el plan de facturacion de la compañia"""
+        if not isinstance(new_plan, BillingPlan):
+            raise ValueError(f"plan invalido. Opciones : {[p.value for p in BillingPlan]}")
+        
+        db_company = CompanyRepository.get_by_id(db, company_id)
+        if not db_company:
+            return None
+        try:
+            db_company.billing_plan = new_plan
+            if  subscription_ends_at:
+                db_company.subscription_ends_at = subscription_ends_at
+            db.commit()
+            db.refresh(db_company)
+            logger.info(f"[Company.update_billing_plan] id={company_id} - plan={new_plan}")
+            return db_company
+        except SQLAlchemyError as err:
+            db.rollback()
+            logger.error(f"[Company.update_billing_plan] id={company_id} -- {err}")
+            raise RuntimeError("Error interno de base de datos")
+
+
+    @staticmethod
+    def deactivate(db: Session, company_id:UUID) -> bool:    
+        """ soft delte marca is_active=False """
+        db_company = CompanyRepository.get_by_id(db,company_id)
+        if not company_id:
+            return False
+        try:
+            db_company.is_active = False
+            db.commit()
+            logger.info(f"[Company.deactivate] id={company_id}")
+            return True
+        except SQLAlchemyError as err:
+            db.rollback()
+            logger.error(f"[Company.deactivate] id={company_id} -- {err}")
+            raise RuntimeError("Error interno de la base de datos")
+    
+
 
     @staticmethod
     def get_by_id(db:Session, company_id:UUID) -> Optional[Company]:
