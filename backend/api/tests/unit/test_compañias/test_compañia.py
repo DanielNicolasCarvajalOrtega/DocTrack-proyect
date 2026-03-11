@@ -96,7 +96,7 @@ class TestCompanyRepositoryEscritura:
     def test_create_exitoso(self, db):
         data = {
             "name": "Carozzi S.A",
-            "slug": "carozzi-chile",
+            "slug": "carozzi",
             "billing_plan": BillingPlan.empresas
         }
 
@@ -104,6 +104,81 @@ class TestCompanyRepositoryEscritura:
         db.commit = MagicMock()
         db.refresh = MagicMock()
         
-        with patch("app.modules.compañias.repository")
-    
+        with patch("app.modules.compañias.repository") as MockCompany:
+            fake = MagicMock()
+            MockCompany.return_value = fake
+            result = CompanyRepository.create(db, data)
+            assert result == fake
+            db.commit.assert_called_once()
 
+
+    def test_create_sin_nombre_lanza_error(self, db):
+        with pytest.raises(ValueError, match="obligatorios"):
+            CompanyRepository.create(
+                db,
+                {
+                    "slug":"carozzi"
+                }
+            )
+
+    def test_create_sin_slug_lanza_error(self, db):
+        with pytest.raises(ValueError, match="obligatorios"):
+            CompanyRepository.create(
+                db,
+                {
+                    "name":"Carozzi S.A"
+                }
+            )
+
+    def test_create_slug_invalido_lanza_error(self, db):
+        with pytest.raises(ValueError, match="slug invalido"):
+            CompanyRepository.create(
+                db,
+                {
+                    "slug": "caro!%zi!!"
+                }    
+            )
+        
+    def test_create_integrity_error_slug_duplicado(self, db):
+        data = {
+            "name": "Carozzi S.A",
+            "slug": "carozzi"
+        }
+        db.commit.side_effect = IntegrityError(
+            "slug",
+            {},
+            Exception("unique constraint slug")
+        )
+        with pytest.raises(ValueError, match="slug"):
+            CompanyRepository.create(db, data)
+        db.rollback.assert_called_once()
+
+    
+    def test_create_sqlalchemy_error_lanza_runtime(self, db):
+        data = {
+            "name": "Carozzi S.A",
+            "slug": "carozzi"
+        }
+        db.commit.side_effect = SQLAlchemyError("timeout")
+        with pytest.raises(RuntimeError, match="error interno"):
+            CompanyRepository.create(db, data)
+        db.rollback.assert_called_once()
+
+    def test_update_exitoso(self, db, fake_company, company_id):
+        db.query().filter().first.return_value = fake_company
+        result = CompanyRepository.update(db,company_id, {"name":"Carozzi nuevo"})
+        db.commit.assert_called_once()
+        assert result == fake_company
+
+
+    def test_update_sin_datos_lanza_error(self, db, company_id):
+        with pytest.raises(ValueError, match="no se enviarion"):
+            CompanyRepository.update(db, company_id, {})
+
+
+    def test_update_campo_no_permitido_lanza_error(self, db, company_id):
+        with pytest.raises(ValueError, match="no permitidos"):
+            CompanyRepository.update(db, company_id, {"is_active": False})
+                    
+    
+    
