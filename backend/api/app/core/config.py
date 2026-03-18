@@ -1,8 +1,8 @@
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 from functools import lru_cache
 import os
 from  dotenv import load_dotenv
-
 
 
 

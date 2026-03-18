@@ -10,26 +10,25 @@ from app.modules.compañias.models import Company, CompanyRole, BillingPlan
 
 logger = logging.getLogger(__name__)
 
-COMPANY_ALLOWED_UPDATE_FIELDS = {
-    "name", "slug", "billing_plan", "max_users",
-    "max_plants", "max_storage_gb", "trial_ends_at", "subscription_ends_at",
-    "contact_email", "contact_phone", "address","logo_url","primary_color",
-}
 
-COMPANY_USER_ALLOWED_UPDATE_FIELDS = {
-    "role",
-}
-
-_COMPANY_FIELD_VALIDATORS = {
-    "slug":          _validate_slug,
-    "primary_color": _validate_color,
-    "contact_email": _validate_email,
-    "name":          _validate_name,
-    "max_users":     lambda v: _validate_positive_int(v, "max_users"),
-    "max_plants":    lambda v: _validate_positive_int(v, "max_plants"),
-    "max_storage_gb":lambda v: _validate_positive_int(v, "max_storage_gb"),
-}
-
+def _validate_name(name: str) -> None:
+    if not name or not name.strip():
+        raise ValueError("El nombre no puede estar vacío.")
+    
+    clean = name.strip()
+    
+    if len(clean) < 2:
+        raise ValueError("El nombre debe tener al menos 2 caracteres.")
+    if len(clean) > 200:
+        raise ValueError("El nombre no puede superar los 200 caracteres.")
+    
+    # Bloquea caracteres usados en XSS e inyecciones
+    if re.search(r"[<>\"'`;]", clean):
+        raise ValueError("El nombre contiene caracteres no permitidos.")
+    
+    # Solo permite letras, números, espacios y puntuación de negocio
+    if not re.match(r"^[\w\s\-\.\,\&\(\)áéíóúÁÉÍÓÚñÑüÜ]+$", clean):
+        raise ValueError("El nombre contiene caracteres no permitidos.")
 
 
 def _validate_slug(slug : str) -> None:
@@ -47,7 +46,7 @@ def _validate_color(color:str) ->None:
     if not re.match(r'^#[0-9A-Fa-f]{6}$', color):
         raise ValueError(f"Color inválido '{color}'. Formato esperado: #3B82F6")
     
-def _validate_email(email:str)- > None:
+def _validate_email(email:str) -> None:
     if not email:
         return 
     if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
@@ -78,6 +77,27 @@ def _parse_integrity_error(origin:str, context:str = "") -> str:
             return msg
     return f"Conflicto de datos{' en ' + context if context else ''}. Verifica la información enviada."
     
+
+
+COMPANY_ALLOWED_UPDATE_FIELDS = {
+    "name", "slug", "billing_plan", "max_users",
+    "max_plants", "max_storage_gb", "trial_ends_at", "subscription_ends_at",
+    "contact_email", "contact_phone", "address","logo_url","primary_color",
+}
+
+COMPANY_USER_ALLOWED_UPDATE_FIELDS = {
+    "role",
+}
+
+_COMPANY_FIELD_VALIDATORS = {
+    "slug": _validate_slug,
+    "primary_color": _validate_color,
+    "contact_email": _validate_email,
+    "name": _validate_name,
+    "max_users":     lambda v: _validate_positive_int(v, "max_users"),
+    "max_plants":    lambda v: _validate_positive_int(v, "max_plants"),
+    "max_storage_gb":lambda v: _validate_positive_int(v, "max_storage_gb"),
+}
 
 
 class CompanyRepository:
@@ -121,7 +141,7 @@ class CompanyRepository:
         db_company = CompanyRepository.get_by_id(db, company_id)
         if not db_company:
             return None
-
+        
         try:
             for key, value in update_data.items():
                 setattr(db_company, key, value)
@@ -130,6 +150,7 @@ class CompanyRepository:
             logger.info(f"[Company.update] id={company_id} campos= {list(update_data.keys())}")
             return db_company
         except IntegrityError as err:
+            db.rollback()
             logger.warning(f"[Company.update] IntegrityError id={company_id}: error:{ err.orig}")
             raise ValueError(_parse_integrity_error(str(err.orig), "Company"))
         except SQLAlchemyError as err:
@@ -171,7 +192,7 @@ class CompanyRepository:
     def deactivate(db: Session, company_id:UUID) -> bool:    
         """ soft delte marca is_active=False """
         db_company = CompanyRepository.get_by_id(db,company_id)
-        if not company_id:
+        if not db_company:
             return False
         try:
             db_company.is_active = False
@@ -214,7 +235,7 @@ class CompanyRepository:
     def get_by_email(db:Session, contact_email:str) -> Optional[Company]:
         _validate_email(contact_email)
         try:
-            db.query(Company).filter(
+            return db.query(Company).filter(
                 Company.contact_email == contact_email,
                 Company.is_active == True
             ).first()

@@ -51,17 +51,16 @@ class CompanyUserRepository:
     def get_user_role(db:Session, company_id:UUID, user_id:UUID) -> Optional[CompanyRole]:
         """ rol activo de un usuario dentro de la compañia"""
         user_is_active = CompanyUserRepository._get_active_user_is_part_of_the_company(db, company_id, user_id)
-        return user_is_active.rol if user_is_active else None
+        return user_is_active.role if user_is_active else None
 
     
     @staticmethod
     def get_user_by_company(db:Session, company_id:UUID, role:Optional[CompanyRole] = None,skip:int=0, limit:int=20) ->list[CompanyUser]:
         """ miembros activos en la compañia  filtrado por rol"""
-
         if skip < 0:
-            raise ValueError("skip no puede ser negarigo")
+            raise ValueError("skip no puede ser negativo")
         if role is not None and not isinstance(role, CompanyRole):
-            raise ValueError(f"Rol invalido. Opciones: {[r.value for r in CompanyRole]}")
+            raise ValueError(f"Rol inválido. Opciones: {[r.value for r in CompanyRole]}")
         limit = min(max(limit,1),100)
 
         try:
@@ -107,7 +106,7 @@ class CompanyUserRepository:
     @staticmethod
     def add_user_to_company(db:Session, company_id: UUID, user_id:UUID, role:CompanyRole, invited_by_id:Optional[UUID]=None)-> CompanyUser:
         if not isinstance(role, CompanyRole):
-            raise ValueError(f"rol invalido: opciones {[r.value for r in CompanyRole]}")
+            raise ValueError(f"rol inválido: opciones {[r.value for r in CompanyRole]}")
         if invited_by_id and invited_by_id == user_id:
             raise ValueError("un usuario no puede invitarse o agregarse a si mismo")
 
@@ -140,18 +139,18 @@ class CompanyUserRepository:
     def update_user_role(db:Session, company_id:UUID, user_id: UUID, new_role: CompanyRole) -> Optional[CompanyUser]:
         """Actualiza el rol. Guard clauses: rol válido → es miembro → rol diferente → persistir"""
         if not isinstance(new_role, CompanyRole):
-            raise ValueError(f"Rol invalido, Optciones {[r.value for r in CompanyRole]}")
+            raise ValueError(f"Rol inválido, Opciones {[r.value for r in CompanyRole]}")
         
         membership = CompanyUserRepository._get_active_user_is_part_of_the_company(db, user_id, company_id)
         if not membership:
             return None
         
-        if membership.rol == new_role:
+        if membership.role == new_role:
             raise ValueError(f"El usuario ya tiene el rol -> {new_role.value}")
         
         try:
             old_role = membership.role
-            membership.rol = new_role
+            membership.role = new_role
             db.commit()
             db.refresh(membership)
             logger.info(f"[CompanyUser.update_user_role] user={user_id} - {old_role} - {new_role} ")
