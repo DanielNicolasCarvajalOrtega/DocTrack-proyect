@@ -6,8 +6,8 @@ from uuid import UUID
 from sqlalchemy import exists
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from app.modules.compañias.models import Company, CompanyRole, BillingPlan
-
+from app.modules.compañias.models import Company, BillingPlan, IndustryType, StructureType
+from app.modules.compañias.constants import (BILLING_PLAN_LIMITS, COMPANY_ALLOWED_UPDATE_FIELDS) 
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +16,6 @@ def _validate_name(name: str) -> None:
         raise ValueError("El nombre no puede estar vacío.")
     
     clean = name.strip()
-    
     if len(clean) < 2:
         raise ValueError("El nombre debe tener al menos 2 caracteres.")
     if len(clean) > 200:
@@ -102,6 +101,12 @@ _COMPANY_FIELD_VALIDATORS = {
 
 class CompanyRepository:
 
+    """
+    Acceso a datos de Company.
+    - Retorna objetos ORM o None. Nunca JsonResponse.
+    - Los límites del plan (max_*) se aplican via apply_billing_plan.
+      El admin nunca los modifica directamente — los define el plan.
+    """
     @staticmethod
     def create(db:Session, company_data:dict) -> Company:
         """ crea nueva compañia con validacion de datos primero"""
@@ -129,7 +134,11 @@ class CompanyRepository:
         
     @staticmethod
     def update(db:Session, company_id: UUID, update_data: dict[str, Any]) -> Optional[Company]:
-        """ guard clauses → whitelist → validar formatos → persisten """
+        """ 
+        Actualiza solo los campos permitidos por la whitelist.
+        Los límites del plan (max_*) NO están en la whitelist —
+        solo se modifican via apply_billing_plan.
+        """
         if not update_data:
             raise ValueError("no se enviaron datos para actualizar")
         
@@ -158,6 +167,47 @@ class CompanyRepository:
             logger.error(f"[Company.update] SQLAlchemyError id={company_id} - {err}")
             raise RuntimeError("Error en la base de datos")
         
+    @staticmethod
+    def apply_billng_plan(
+        db:Session,
+        company_id:UUID,
+        new_plan: BillingPlan,
+        subscriptions_ends_at: Optional[datetime] = None,
+    )-> Optional[Company]:
+        
+        """
+        Cambia el plan y aplica automáticamente todos los límites.
+        FIX: update_billing_plan anterior solo cambiaba billing_plan,
+        no aplicaba max_users_per_plant, max_plants, max_storage_gb, max_children.
+        Este método reemplaza update_billing_plan.
+        """
+
+        if not isinstance(new_plan, BillingPlan):
+            raise ValueError(f"Plan inválido. Opciones: {[p.value for p in BillingPlan]}")
+        
+        db_company = CompanyRepository.get_by_id(db, company_id)
+        if not db_company:
+            return None
+        
+        limits = BILLING_PLAN_LIMITS[new_plan.value]
+
+        try:
+            db_company.billing_plan = new_plan
+            db_company.max_users_per_plant = limits["max_users_per_plant"]
+            db_company.max_plants = limits["max_plants"]
+            db_company.max_storage_gb = limits["max_storage_gb"]
+            db_company.max_children = limits["max_children"]
+            if subscriptions_ends_at:
+                db_company.subscription_ends_at = subscriptions_ends_at
+            db.commit()
+            db.refresh(db_company)
+            logger.info(f"[Company.apply_billing_plan] id={company_id} plan='{new_plan.value}'")
+            return db_company
+        
+        except SQLAlchemyError as err:
+            db.rollback()   
+            logger.error(f"[Company.apply_billing_plan] id={company_id} — {err}")
+            raise RuntimeError("Error interno de base de datos.") 
 
     @staticmethod
     def update_billing_plan(
@@ -205,7 +255,6 @@ class CompanyRepository:
             raise RuntimeError("Error interno de la base de datos")
     
 
-
     @staticmethod
     def get_by_id(db:Session, company_id:UUID) -> Optional[Company]:
         try:
@@ -224,11 +273,11 @@ class CompanyRepository:
         try:
             return db.query(Company).filter(
                 Company.slug == slug.strip(),
-                Company.is_active == True
+                Company.is_active == True,
             ).first()
         
         except SQLAlchemyError as err:
-            logger.error(f"slug = {slug} - {err}")
+            logger.error(f"[Company.get_by_slug] slug='{slug}' — {err}")
             raise RuntimeError("error interno al consultar la base de datos")
     
     @staticmethod
@@ -241,17 +290,23 @@ class CompanyRepository:
             ).first()
 
         except SQLAlchemyError as err:
-            logger.error(f"contact email = {contact_email} - {err}")
+            logger.error(f"[Company.get_by_email] email='{contact_email}' — {err}")
             raise RuntimeError("error interno al consultar la base de datos")
     
     @staticmethod
     def get_all_active(db:Session, skip:int = 0, limit: int = 40) -> list[Company]:
+        """
+        Lista paginada de compañías raíz activas.
+        FIX: filtra parent_id IS NULL para no incluir subsidiarias.
+        """
+        
         if skip < 0:
             raise ValueError(" skip no puede ser negativo ")
         limit = min(max(limit, 1), 100)
         try:
             return db.query(Company).filter(
                 Company.is_active == True,
+                Company.parent_id == None,
             ).offset(skip).limit(limit).all()
         except SQLAlchemyError as err:
             logger.error(f" company active = [Company.get_all_active] - {err}")
@@ -259,7 +314,7 @@ class CompanyRepository:
         
     @staticmethod
     def get_all_billing_plan(db:Session, billing_plan: BillingPlan, skip:int=0, limit:int = 20)-> list[Company]:
-        """ compañias con planes de pago activoas """
+        """ compañias con planes de pago activos """
         if not isinstance(billing_plan, BillingPlan):
             raise ValueError(f"plan invalido - planes validos: {[p.value for p in BillingPlan]}")
         limit = min(max(limit,1), 100)
@@ -269,17 +324,19 @@ class CompanyRepository:
                 Company.is_active == True
             ).offset(skip).limit(limit).all()
         except SQLAlchemyError as err:
-            logger.error(f"plan = {billing_plan} -- {err}")
+            logger.error(f"[Company.get_all_billing_plan] plan='{billing_plan}' — {err}")
             raise RuntimeError("error interno al consultar la base de datos")
 
     @staticmethod
     def get_trials_expiring_soon(db:Session, before: datetime) -> list[Company]:
-        """ planes de prueba que van a vencer antes de la fecha """
+        """ planes de prueba que van a vencer antes de la fecha 
+            FIX: era Company.billing_plan == BillingPlan (la clase) → nunca retornaba nada
+        """
         if not isinstance(before, datetime):
             raise ValueError("before debe ser un datetime valido")
         try:
             return db.query(Company).filter(
-                Company.billing_plan == BillingPlan,
+                Company.billing_plan == BillingPlan.prueba, # FIX correjido
                 Company.trial_ends_at <= before,
                 Company.trial_ends_at.isnot(None),
                 Company.is_active == True,
@@ -288,11 +345,50 @@ class CompanyRepository:
         except SQLAlchemyError as err:
             logger.error(f"[Company.get_trials_expiring_soon] before={before} — {err}")
             raise RuntimeError("Error interno al consultar la base de datos.")
+    
+    @staticmethod
+    def get_by_industry(db:Session, industry: IndustryType, skip:int=0, limit:int = 20) -> list[Company]:
+        """compañias activas filtradas por industria"""
+        if not isinstance(industry, IndustryType):
+            raise ValueError(f"Industria invalida, Opciones: {[i.value for i in IndustryType]}")
+    
+        limit = min(max(limit, 1), 100)
+        try:
+            return db.query(Company).filter(
+                Company.industry == industry,
+                Company.is_active == True,
+            ).offset(skip).limit(limit).all()
         
+        except SQLAlchemyError as err:
+            logger.error(f"[Company.get_by_industry] industry='{industry}' — {err}")
+
+            raise RuntimeError("Error interno en la base de datos")
+    
+
+
+    @staticmethod
+    def get_by_structure(db:Session, structure:StructureType, skip: int = 0, limit:int =20)-> list[Company]:
+        """
+        compañias activas filtradas por tipo de estructura
+        """
+
+        if not isinstance(structure, StructureType):
+            raise ValueError(f"Estructura inválida. Opciones: {[s.value for s in StructureType]}")
+        
+        limit = min(max(limit, 1), 100)
+        try:
+            return db.query(Company).filter(
+                Company.structure_type == structure,
+                Company.is_active == True,
+            ).offset(skip).limit(limit).all()
+        except SQLAlchemyError as err:
+            logger.error(f"[Company.get_by_structure] structure='{structure}' — {err}")
+            raise RuntimeError("Error interno en la base de datos")
+
 
     @staticmethod
     def get_subscriptions_expiring_soon(db:Session, before:datetime) -> list[Company]:
-        """ proximas subscripciones a vencer"""
+        """ proximas subscripciones a vencer antes de la fecha  (before)"""
         if not isinstance(before,  datetime):
             raise ValueError("before debe ser un datetime valido")
         
@@ -307,4 +403,46 @@ class CompanyRepository:
             raise RuntimeError("Error interno al consultar la base de datos.")
     
     
+    @staticmethod
+    def get_all_children(db:Session, parent_id: UUID) -> list[Company]:
+        """  
+        Subsidiarias activas de una compañía parent.
+        """
 
+        try:
+            return db.query(Company).filter(
+                Company.parent_id == parent_id,
+                Company.is_active == True,
+            ).all()
+        
+        except SQLAlchemyError as err:
+            logger.error(f"[Company.get_children] parent={parent_id} — {err}")
+            raise RuntimeError("Error interno al consultar la base de datos.")
+
+    @staticmethod
+    def count_children(db:Session, parent_id: UUID)-> int:
+        """cuanta subsidiaria activas de un parent"""
+
+        try:
+            return db.query(Company).filter(
+                Company.parent_id == parent_id,
+                Company.is_active == True
+            ).count()
+        except SQLAlchemyError as err:
+            logger.error(f"[Company.count_children] parent={parent_id} — {err}")
+            raise RuntimeError("Error interno al consultar la base de datos.")
+    
+    @staticmethod
+    def get_root_compaies(db:Session, skip:int = 0, limit:int = 20)-> list[Company]:
+        """Compañías raíz activas — las que no tienen parent."""
+        if skip < 0:
+            raise ValueError("skip' no puede ser negativo.")
+        limit = min(max(limit, 1), 100)
+        try:
+            return db.query(Company).filter(
+                Company.parent_id == None,
+                Company.is_active == True
+            ).offset(skip).limit(limit).all()
+        except SQLAlchemyError as err:
+            logger.error(f"[Company.get_root_companies] — {err}")
+            raise RuntimeError("Error interno al consultar la base de datos.")
