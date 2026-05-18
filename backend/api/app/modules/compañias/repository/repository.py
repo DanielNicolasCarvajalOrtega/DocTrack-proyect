@@ -237,7 +237,6 @@ class CompanyRepository:
             logger.error(f"[Company.update_billing_plan] id={company_id} -- {err}")
             raise RuntimeError("Error interno de base de datos")
 
-
     @staticmethod
     def deactivate(db: Session, company_id:UUID) -> bool:    
         """ soft delte marca is_active=False """
@@ -299,7 +298,6 @@ class CompanyRepository:
         Lista paginada de compañías raíz activas.
         FIX: filtra parent_id IS NULL para no incluir subsidiarias.
         """
-        
         if skip < 0:
             raise ValueError(" skip no puede ser negativo ")
         limit = min(max(limit, 1), 100)
@@ -365,7 +363,6 @@ class CompanyRepository:
             raise RuntimeError("Error interno en la base de datos")
     
 
-
     @staticmethod
     def get_by_structure(db:Session, structure:StructureType, skip: int = 0, limit:int =20)-> list[Company]:
         """
@@ -402,9 +399,9 @@ class CompanyRepository:
             logger.error(f"[Company.get_trials_expiring_soon] before={before} — {err}")
             raise RuntimeError("Error interno al consultar la base de datos.")
     
-    
+   
     @staticmethod
-    def get_all_children(db:Session, parent_id: UUID) -> list[Company]:
+    def get_all_children_by_parent(db:Session, parent_id: UUID) -> list[Company]:
         """  
         Subsidiarias activas de una compañía parent.
         """

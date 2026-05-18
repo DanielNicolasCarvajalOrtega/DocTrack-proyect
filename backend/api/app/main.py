@@ -14,10 +14,12 @@ from app.modules.mantenimiento.router import router as maintenance_router
 from app.modules.users.router import router as users_router
 
 
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
+
         docs_url="/api/docs",
         redoc_url="/api/redoc",
     )
@@ -39,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(machines_router, prefix=f"{prefix}/maquinas", tags=["Machines"])
     app.include_router(documents_router, prefix=f"{prefix}/documentos", tags=["Documents"])
     app.include_router(maintenance_router, prefix=f"{prefix}/mantenimiento", tags=["Maintenance"])
+    app.include_router(maintenance_router, prefix=f"{prefix}/compañia", tags=["Company"])
 
     @app.get("/health")
     def health_check():
@@ -48,8 +51,13 @@ def create_app() -> FastAPI:
             "version": settings.APP_VERSION,
             "environment": settings.ENVIRONMENT
         }
-
     return app
 
-
 app = create_app()
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "el inicio funciona"
+    }

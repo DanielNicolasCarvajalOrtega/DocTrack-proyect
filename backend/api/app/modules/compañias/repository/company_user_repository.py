@@ -232,20 +232,20 @@ class CompanyUserRepository:
 
     @staticmethod
     def remove_user_from_company(db:Session, company_id:UUID, user_id:UUID) -> bool:
-        """ soft delete de membresia - si no es miebro activo False """
+        """ soft delete de membresia - si no es miembro activo False """
 
         membership = CompanyUserRepository._get_active_user_is_part_of_the_company(db, company_id, user_id)
         if not membership:
             return False
         try:
-            membership.is_active = False
+            membership.is_active = False # modifica el objeto a false 
             db.commit()
             logger.info(f"[CompanyUser.remove_user_from_company] "
                         f"user={user_id} company={company_id}")
-            return True
+            return True # confirma que si se guardo en la base de datos 
         except SQLAlchemyError as err:
             db.rollback()
             logger.error(f"[CompanyUser.remove_user_from_company] user={user_id} company={company_id} — {err}")
             raise RuntimeError("Error interno de base de datos")
-
+        
 
