@@ -43,7 +43,7 @@ BILLING_PLAN_LIMITS: dict[str, dict] = {
     },
 }
 
-ILLING_PLAN_PRICES: dict[str, dict] = {
+BILLING_PLAN_PRICES: dict[str, dict] = {
     BillingPlan.prueba.value: {
         "clp":        0,
         "usd":        0,
@@ -110,6 +110,7 @@ COMPANY_ALLOWED_UPDATE_FIELDS: set[str] = {
     "name",
     "slug",
     "industry",
+    "structure_type",
     "trial_ends_at",
     "subscription_ends_at",
     "contact_email",
