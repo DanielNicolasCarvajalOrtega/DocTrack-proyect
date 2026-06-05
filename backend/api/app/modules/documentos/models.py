@@ -1,0 +1,99 @@
+import enum
+from datetime import datetime
+from sqlalchemy import Column, String, Text, Enum, ForeignKey, Integer, DateTime, Index, Boolean, Numeric
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from app.core.base_models import BaseModel
+
+
+class DocumentType(str, enum.Enum):
+    manuales = "manuales"
+    certificados = "certificados"
+    instrucciones_seguridad = "instrucciones_seguridad"
+    mantenimiento = "mantenimiento"
+    hoja_tecnica = "hoja_tecnica"
+    procedimientos = "procedimientos"
+    otros = "otros"
+
+
+class DocumentStatus(str, enum.Enum):
+    activo = "activo"
+    expirado = "expirado"
+    sustituido = "sustituido"
+    borrador = "borrador"
+
+
+class Document(BaseModel):
+    __tablename__ = "documents"
+
+    title = Column(String(300),  nullable=False)
+    description = Column(Text, nullable=True)
+    doc_type = Column(Enum(DocumentType), nullable=False, default=DocumentType.otros)
+    status = Column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.activo)
+    version  = Column(String(20), nullable=False, default="1.0")
+    version_number = Column(Integer, nullable=False, default=1)
+    file_url = Column(String(1000), nullable=False)
+    file_name = Column(String(300), nullable=False)
+    file_size = Column(Integer, nullable=True)
+    file_size_gb = Column(Numeric(10, 2), nullable=True, default=0)
+    file_type = Column(String(50),nullable=True)
+    valid_from = Column(DateTime, nullable=True)
+    valid_until = Column(DateTime, nullable=True)
+    uploaded_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    machine_id = Column(UUID(as_uuid=True), ForeignKey("machines.id",  ondelete="RESTRICT"), nullable=False, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, index=True)
+    supersedes_id  = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"),  nullable=True)
+    company  = relationship("Company", back_populates="documents")
+    machine  = relationship("Machine", back_populates="documents")
+    uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])
+    updated_by  = relationship("User", foreign_keys=[updated_by_id])
+
+    read_confirmations = relationship(
+        "DocumentReadConfirmation",
+        back_populates="document",
+        cascade="all, delete-orphan",
+    )
+
+    supersedes = relationship(
+        "Document",
+        remote_side="Document.id",
+        foreign_keys=[supersedes_id],
+        backref="superseded_by",
+    )
+
+    __table_args__ = (
+        Index('ix_document_machine_active','machine_id', 'is_active'),
+        Index('ix_document_status', 'status'),
+        Index('ix_document_valid_until', 'valid_until'),
+        Index('ix_document_company_status', 'company_id','status'),
+        Index('ix_document_company_type','company_id','doc_type'),
+    )
+
+    def __repr__(self):
+        return f"<Document {self.title}>"
+
+
+class DocumentReadConfirmation(BaseModel):
+    __tablename__ = "document_read_confirmations"
+
+    document_id  = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="RESTRICT"), nullable=False, index=True)
+    user_id      = Column(UUID(as_uuid=True), ForeignKey("users.id",     ondelete="CASCADE"),  nullable=False, index=True)
+    read_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    confirmed_at = Column(DateTime, nullable=True)
+    risks_accepted = Column(Boolean, default=False, nullable=False)
+    signature_hash = Column(String(255), unique=True, nullable=True)
+    notes = Column(Text, nullable=True)
+
+    document = relationship("Document", back_populates="read_confirmations")
+    user     = relationship("User")
+
+    __table_args__ = (
+        Index('ix_doc_confirmation_document','document_id'),
+        Index('ix_doc_confirmation_user','user_id'),
+        Index('ix_doc_read_confirmations_document_id','document_id','is_active'),
+        Index('ix_doc_read_confirmations_user_id','user_id','is_active'),
+    )
+
+    def __repr__(self):
+        return f"<DocumentReadConfirmation doc={self.document_id} user={self.user_id}>"

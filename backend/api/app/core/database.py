@@ -1,0 +1,34 @@
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+from app.core.config import settings
+
+Base = declarative_base()
+
+
+engine = create_engine(
+    settings.DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    echo=settings.DEBUG,
+)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+
+)
+
+
+def get_db():
+    db = SessionLocal()
+    """usamos la injeccion de dependencias en 
+        archivos router.py
+    """
+    try: 
+        yield db
+
+    finally:
+        db.close()
+
