@@ -128,7 +128,7 @@ class CompanyService:
 
     new_limits = BILLING_PLAN_LIMITS[new_plan.value] 
 
-    # guard --- no degradar si tiene subcidiaria activas
+    # guard --- no degradar si tiene subsidiaria activas
     if new_plan not in PLANS_WITH_CHILDREN: 
       children_active = CompanyRepository.count_children(db, company_id) # contamos childrens
       if children_active > 0: # verifica si children es mayor a 0 si no debe crear una compañia
@@ -150,6 +150,153 @@ class CompanyService:
       f"plan='{new_plan.value}' by={requesting_user_id}"
     )
     return company
+
+  @staticmethod
+  def verificar_bloqueo_downgrade(db:Session, 
+                                  company_id: UUID, 
+                                  new_plan:BillingPlan, 
+                                  requesting_user_id: UUID) -> dict:
+    
+    """
+    verifica que bloquea la degradacion del plan
+    llama este metodo antes de intentar degradar - le dice al admin exactamente 
+    lo que debe limpiar primero, antes de degradar el plan.
+    
+    RETORNA un dict con:
+    puede degradar ? = bool
+    bloqueos = string con cada problema
+    subsidiarias activas = cuantas tiene vs cuantas permite el plan
+    estructura incompatible
+    """
+    
+    company = _obtener_compania_o_error(db, company_id)
+    _verificar_puede_administrar(db, company, requesting_user_id, "cambiar el plan")
+
+    new_limits_plan = BILLING_PLAN_LIMITS[new_plan.value]
+    structures_exist = PLAN_ALLOWED_STRUCTURES[new_plan.value]
+    children_actives_in_the_company  = CompanyRepository.count_children(db, company_id)
+    block = []
+
+    # bloqueo si las subsidiarias superan el limnite del nuevo plan
+    maximum_number_of_new_children = new_limits_plan["max_children"]
+    if children_actives_in_the_company > maximum_number_of_new_children:
+      block.append(
+        f"tienes {children_actives_in_the_company} subsidiarias activas"
+        f"el plan {new_plan.value} permite maximo {maximum_number_of_new_children}"
+        f"debes eliminar {children_actives_in_the_company - maximum_number_of_new_children}"
+      )
+
+    # bloqueo, la estructura es incompatible con el nuevo plan
+
+    if company.structure_type not in structures_exist:
+      block.append(
+        f"tu estructura actual {company.structure_type.value} no es compatible con el plan {new_plan.value}"
+        f"estructuras permitidas {[e.value for e in structures_exist]}"
+        f"cambia la estructura a 'simnple' antes de degradar"
+      )
+
+    return {
+      "puede_bloquear": len(block) == 0,
+      "plan_actual": company.billing_plan.value,
+      "plan_objetivo": new_plan.value,
+      "bloqueos": block,
+      "subsidiarias_activas": children_actives_in_the_company,
+      "max_children_nuevo_plan": maximum_number_of_new_children,
+      "estructura incompatible": company.structure_type not in structures_exist,
+    }
+
+  @staticmethod
+  def eliminar_subsidiarias_de_una_compañia_en_cascada(db:Session, company_id: UUID, requesting_user_id: UUID) -> dict:
+    """
+    elimina en cascada todas las subsidiarias de la compañia para poder
+    aplicar el downgrade del plan.
+    SOLO SE PUEDE APLICAR SI, CADA SUBSIDIARIA NO TIENE SUS PROPIAS SUB-SUBSIDIARIAS
+    NI USUARIOS ACTIVOS DISTINTOS AL ADMIN DEL PARENT
+
+    retorna un dict con las eliminadas y cuales fallaron al ser eliminadas
+    """
+
+    company = _obtener_compania_o_error(db, company_id)
+    _verificar_es_admin(db, company, requesting_user_id, "eliminar subsidiarias en cascada")
+
+    subsidiaries_by_parent = CompanyRepository.get_all_children_by_parent(db, company_id)
+    if not subsidiaries_by_parent:
+      return {
+        "eliminadas": 0,
+        "fallidos": {},
+        "mensaje": "No hay subsidiarias activas"
+      }
+    
+    eliminadas = []
+    fallidas = []
+
+    for sub in subsidiaries_by_parent:
+      # no es posible eliminar si las subsidiarias tiene sus propias sub-subsidiarias
+      subsidiaries_childrens = CompanyRepository.count_children(db, sub.id)
+      if subsidiaries_childrens > 0:
+        fallidas.append(
+          {
+            "id": str(sub.id),
+            "nombre": sub.name,
+            "motivo": f"tiene {subsidiaries_childrens} sub-subsidiarias activas"
+          }
+        )
+        continue
+
+      # no eliminar si la subsidiaria tiene usuarios activos
+      users_of_the_subsidiary = CompanyRepository.count_children(db, sub.id)
+      if subsidiaries_childrens > 0:
+        fallidas.append(
+          {
+            "id": str(sub.id),
+            "nombre": sub.name,
+            "motivo": f"tiene {users_of_the_subsidiary} usuarios activos.Debes retirarlos primero."
+          }
+        )
+
+        continue
+      CompanyRepository.deactivate(db, sub.id)
+      eliminadas.append(str(sub.id))
+      logger.info(
+        f"[CompanyService.eliminar_subsidiarias_de_una_compañia_en_cascada]"
+        f"sub={sub.id} parent={company_id} by={requesting_user_id}"
+      )
+
+    return {
+        "eliminadas": len(eliminadas),
+        "fallidas": fallidas,
+        "puede_degradar_ya": len(fallidas) == 0,
+        "mensaje": (
+          f"Se eliminaron {len(eliminadas)} subsidiarias"
+          if not fallidas else f" Se eliminaron {len(eliminadas)}"
+          f"{len(fallidas)} no pudieron eliminarse - revisa los motivos"
+      ),
+    }
+  
+  @staticmethod
+  def degradar_plan_de_una_compañia(db:Session, company_id:UUID, new_plan: BillingPlan, requesting_user_id: UUID, subscriptions_ends_at: None) -> Company:
+    """
+    degradar el plan aplicando los nuevos limites
+    verifica los bloqueos antes de persistir - si hay alguno va a lanzar ValueError
+    con el detalle de que falta limpiar las subsidiarias.
+    """
+    bloqueos = CompanyService.verificar_bloqueo_downgrade(db,company_id, new_plan, requesting_user_id)
+    
+    if not bloqueos["puede_degradar"]:
+      detalle = bloqueos["bloqueos"]
+      raise ValueError(
+        f"no se puede degradar el plan '{new_plan.value}"
+        f"resuelve los siguientes bloqueos: {detalle}"
+      )
+    
+    company = CompanyRepository.apply_billng_plan(db, company_id, new_plan, subscriptions_ends_at)
+    logger.info(
+      f"[CompanyService.degradar_plan_de_una_compañia] id = {company_id}"
+      f"plan = {new_plan.value} by = {requesting_user_id}"
+    )
+
+    return company
+
 
   @staticmethod
   def eliminar_compañia(db:Session, company_id: UUID, requesting_user_id: UUID) -> bool:
@@ -286,6 +433,15 @@ class CompanyService:
     company = _obtener_compania_o_error(db, company_id)
     _verificar_puede_administrar(db, company, requesting_user_id, "agregar usuarios")
 
+
+    max_total = company.max_users_per_plant * company.max_plants
+    usuarios_activos = CompanyUserRepository.count_active_users(db, company_id)
+    if usuarios_activos >= max_total:
+      raise ValueError(
+        f"C{company.name} alcanzo el limite de {max_total} usuarios"
+        f"del plan {company.billing_plan.value}"
+      )
+    
     # guard -- el usuario que se va a agregar no debe ser un miembro activo
     if CompanyUserRepository.is_users_in_company(db, company_id, user_id):
       raise ValueError("El usuario ya es miembro activo de esta compañia")

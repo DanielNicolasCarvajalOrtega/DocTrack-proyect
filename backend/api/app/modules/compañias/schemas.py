@@ -200,7 +200,6 @@ class SubsidiaryCreate(CompanyCreate):
     """
     child_plan: BillingPlan = BillingPlan.prueba
 
-
 class UserInvite(BaseModel):
     # agrea el usuario a la compañia
     user_id:UUID
